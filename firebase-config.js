@@ -9,4 +9,4 @@ export const firebaseConfig = {
 };
 
 // App Check(reCAPTCHA v3) 사이트 키. 비워 두면 App Check 없이 동작합니다.
-export const appCheckSiteKey = "";
+export const appCheckSiteKey = "6LfbARkuAAAAAHCTO6Xqxv7qkeMBUrKVC14m4AB5";
