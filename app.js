@@ -1,7 +1,7 @@
-import { firebaseConfig, appCheckSiteKey } from './firebase-config.js?v=202611100836';
+import { firebaseConfig, appCheckSiteKey } from './firebase-config.js?v=202611100838';
 
 // 배포할 때마다 바꾸는 버전. version.json과 같아야 함
-const APP_VERSION = '202611100836';
+const APP_VERSION = '202611100838';
 
 const $ = id => document.getElementById(id);
 const FB_VER = '10.14.1';
@@ -644,6 +644,25 @@ $('copyLink').onclick = async () => {
 };
 
 /* ========================================================= */
+/* =========================================================
+   AI·자동화 접속 차단 + 붙여넣기 금지
+   ========================================================= */
+const BOT_UA = /ChatGPT|GPTBot|OAI-SearchBot|OpenAI|ClaudeBot|Claude-User|anthropic|PerplexityBot|Perplexity-User|Google-Extended|Bytespider|HeadlessChrome/i;
+const isBot = BOT_UA.test(navigator.userAgent) || navigator.webdriver === true;
+if (isBot) {
+  document.querySelector('.page').innerHTML = '<h1>접속할 수 없습니다</h1><p class="meta">자동화 도구나 AI 에이전트로는 이 게임을 할 수 없어요. 일반 브라우저에서 직접 접속해 주세요.</p>';
+  document.querySelectorAll('.rcmds button, .rtabs button').forEach(b => b.disabled = true);
+  throw new Error('blocked: automated client');
+}
+// 단어 칸에는 직접 타이핑만 (복사·붙여넣기·끌어다 놓기 금지)
+for (const id of ['inp', 'pInp']) {
+  const el = $(id);
+  const deny = e => { e.preventDefault(); const n = id === 'inp' ? $('note') : $('pNote'); noteBox(n, 'err', '붙여넣기는 할 수 없어요. 직접 입력해 주세요.'); };
+  el.addEventListener('paste', deny);
+  el.addEventListener('drop', deny);
+  el.addEventListener('beforeinput', e => { if (e.inputType === 'insertFromPaste' || e.inputType === 'insertFromDrop' || e.inputType === 'insertFromPasteAsQuotation') deny(e); });
+}
+
 /* =========================================================
    새 버전 자동 적용: 서버의 version.json이 바뀌면 새로고침
    (게임 중이면 끝날 때까지 기다렸다가 안내)
