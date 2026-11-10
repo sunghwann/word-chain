@@ -5,7 +5,7 @@
 - **컴퓨터 대결**: 하수 · 중수 · 고수
 - **1:1 대결**: 친구와 입장 코드로 실시간 대결
 - **랭킹**: 친구들 기록을 실시간으로 집계
-- 표준국어대사전 명사 약 32만 개(외래어 포함)로 단어 확인, 두음법칙 지원
+- 표준국어대사전 명사 약 32만 개(외래어 포함) + 동사·형용사 기본형 약 1만 3천 개로 단어 확인, 두음법칙 지원
 - 시작할 때 닉네임 입력, 랭킹은 게임마다 쌓이는 누적 점수
 
 컴퓨터 대결은 바로 됩니다. **랭킹과 1:1 대결**을 쓰려면 아래 Firebase 설정을 한 번 해 주세요(무료).
@@ -64,4 +64,4 @@
 | `firestore.rules` | Firestore 보안 규칙 |
 | `words.bin` | 사전 데이터 (gzip) |
 
-사전 데이터: [41ways/kkeutmal](https://github.com/41ways/kkeutmal)의 `dict/words.txt`에서 표준국어대사전 명사(방언·옛말·북한어 제외)를 골라 썼습니다. 원자료는 국립국어원 《표준국어대사전》([CC BY-SA 2.0 KR](https://creativecommons.org/licenses/by-sa/2.0/kr/))과 [hunspell-dict-ko](https://github.com/spellcheck-ko/hunspell-dict-ko)(CC BY-SA 4.0)이며, `words.bin`은 같은 CC BY-SA 조건을 따릅니다.
+사전 데이터: [41ways/kkeutmal](https://github.com/41ways/kkeutmal)의 `dict/words.txt`에서 표준국어대사전 명사(방언·옛말·북한어 제외)를, [hunspell-dict-ko](https://github.com/spellcheck-ko/hunspell-dict-ko)에서 동사·형용사 기본형을 골라 썼습니다. 원자료는 국립국어원 《표준국어대사전》([CC BY-SA 2.0 KR](https://creativecommons.org/licenses/by-sa/2.0/kr/))과 [hunspell-dict-ko](https://github.com/spellcheck-ko/hunspell-dict-ko)(CC BY-SA 4.0)이며, `words.bin`은 같은 CC BY-SA 조건을 따릅니다.
