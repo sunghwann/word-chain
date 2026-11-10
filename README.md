@@ -30,6 +30,24 @@
 
 몇 분 뒤 페이지를 새로 고치면 오른쪽 아래 상태 표시줄에 **온라인**이 뜹니다.
 
+## 조작·도배 방지
+
+`firestore.rules`가 다음을 검사합니다.
+
+- **컴퓨터 대결 점수**: 게임을 시작할 때 서버에 시작 시각을 남기고, 끝날 때 그 기록을 지우면서만 점수를 올릴 수 있습니다. 점수는 걸린 시간에 비례한 상한(단어 1개당 최소 1.5초)과 난이도별 최고 상한(하수 1,500 · 중수 3,000 · 고수 4,500)을 넘을 수 없고, 한 번에 한 판만 기록됩니다.
+- **1:1 승리**: 실제로 이긴 방·회차의 증빙을 함께 남겨야 하며, 같은 승리는 두 번 기록할 수 없습니다.
+- **기록**: 남의 기록은 고칠 수 없고, 내 기록도 줄이거나 형식에 안 맞게 쓸 수 없습니다.
+- **도배**: 방은 30초에 하나, 닉네임 변경은 5초에 한 번, 단어는 12자 이내만 받습니다.
+
+규칙을 바꾸면 Firebase 콘솔 → Firestore → 규칙 탭에 이 파일 내용을 붙여넣고 **게시**해야 적용됩니다.
+
+### App Check (선택)
+
+1. https://www.google.com/recaptcha/admin/create 에서 **reCAPTCHA v3(점수 기반)** 키를 만들고 도메인에 `sunghwann.github.io`를 넣습니다.
+2. Firebase 콘솔 → **App Check** → 웹 앱에 **reCAPTCHA** 제공자를 등록하고 **비밀 키**를 넣습니다.
+3. **사이트 키**를 `firebase-config.js`의 `appCheckSiteKey`에 넣고 커밋합니다.
+4. App Check 화면에서 요청이 '확인됨'으로 들어오는 것을 확인한 뒤, **Cloud Firestore**와 **Authentication**에 **적용(Enforce)**을 켭니다.
+
 ## GitHub Pages
 
 저장소 **Settings → Pages**에서 Source를 **Deploy from a branch**, 브랜치를 `main` / `(root)`로 두면

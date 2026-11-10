@@ -7,3 +7,6 @@ export const firebaseConfig = {
   messagingSenderId: "250409767734",
   appId: "1:250409767734:web:efe4bd29154d4a4820d997"
 };
+
+// App Check(reCAPTCHA v3) 사이트 키. 비워 두면 App Check 없이 동작합니다.
+export const appCheckSiteKey = "";

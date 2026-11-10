@@ -2,23 +2,169 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // 랭킹: 누구나 읽고, 자기 기록만 씀
-    match /scores/{uid} {
-      allow read: if true;
-      allow write: if request.auth != null && request.auth.uid == uid
-                   && request.resource.data.nick is string
-                   && request.resource.data.nick.size() <= 12;
+    function signedIn() { return request.auth != null; }
+    function me() { return request.auth.uid; }
+
+    /* ---------------- 랭킹 ---------------- */
+    function zero() { return {'best': 0, 'w': 0, 'l': 0}; }
+    function lvOf(d, k) { return d.get(k, zero()); }
+    function pvpOf(d) { return d.get('pvp', {'w': 0, 'l': 0}); }
+    function games(m) { return m.w + m.l; }
+    function soloGames(d) { return games(lvOf(d, 'easy')) + games(lvOf(d, 'mid')) + games(lvOf(d, 'hard')); }
+    function okLv(m, cap) {
+      return m.keys().hasOnly(['best', 'w', 'l'])
+        && m.best is int && m.best >= 0 && m.best <= cap
+        && m.w is int && m.w >= 0 && m.l is int && m.l >= 0;
+    }
+    function notLess(n, o, k) {
+      return lvOf(n, k).best >= lvOf(o, k).best && lvOf(n, k).w >= lvOf(o, k).w && lvOf(n, k).l >= lvOf(o, k).l;
+    }
+    function sameBest(n, o, k) { return lvOf(n, k).best == lvOf(o, k).best; }
+    function sameBests(n, o) { return sameBest(n, o, 'easy') && sameBest(n, o, 'mid') && sameBest(n, o, 'hard'); }
+    function samePvp(n, o) { return pvpOf(n).w == pvpOf(o).w && pvpOf(n).l == pvpOf(o).l; }
+
+    // 형식 검사 + 기록은 줄어들 수 없음
+    function validScore(n, o) {
+      return n.keys().hasOnly(['nick', 'easy', 'mid', 'hard', 'pvp', 'total', 'updatedAt', 'lastClaim'])
+        && n.nick is string && n.nick.size() <= 12
+        && okLv(lvOf(n, 'easy'), 1500) && okLv(lvOf(n, 'mid'), 3000) && okLv(lvOf(n, 'hard'), 4500)
+        && pvpOf(n).keys().hasOnly(['w', 'l']) && pvpOf(n).w is int && pvpOf(n).l is int
+        && n.total == lvOf(n, 'easy').best + lvOf(n, 'mid').best + lvOf(n, 'hard').best
+        && n.updatedAt == request.time
+        && notLess(n, o, 'easy') && notLess(n, o, 'mid') && notLess(n, o, 'hard')
+        && pvpOf(n).w >= pvpOf(o).w && pvpOf(n).l >= pvpOf(o).l;
     }
 
-    // 1:1 대결 방
+    // 1) 닉네임만 바꿈 (5초에 한 번)
+    function nickOnly(n, o) {
+      return soloGames(n) == soloGames(o) && samePvp(n, o) && sameBests(n, o)
+        && (o.get('updatedAt', null) == null || request.time > o.updatedAt + duration.value(5, 's'));
+    }
+
+    // 2) 컴퓨터 대결 한 판: 시작할 때 만든 세션을 이번 쓰기에서 지워야 하고,
+    //    점수는 걸린 시간에 비례한 상한을 넘을 수 없음 (단어 1개당 최소 1.5초)
+    function sessionPath() { return /databases/$(database)/documents/sessions/$(me()); }
+    function capOk(best, L, secs) {
+      return (L == 'easy' && best * 3 <= 90  + 20 * secs)
+          || (L == 'mid'  && best * 3 <= 300 + 40 * secs)
+          || (L == 'hard' && best * 3 <= 750 + 60 * secs);
+    }
+    function soloGame(n, o) {
+      let s = get(sessionPath()).data;
+      let L = s.level;
+      let secs = (request.time - s.startedAt).seconds();
+      return exists(sessionPath()) && !existsAfter(sessionPath())
+        && soloGames(n) == soloGames(o) + 1
+        && games(lvOf(n, L)) == games(lvOf(o, L)) + 1
+        && (L == 'easy' || sameBest(n, o, 'easy'))
+        && (L == 'mid'  || sameBest(n, o, 'mid'))
+        && (L == 'hard' || sameBest(n, o, 'hard'))
+        && (sameBest(n, o, L) || capOk(lvOf(n, L).best, L, secs))
+        && samePvp(n, o);
+    }
+
+    // 3) 1:1 결과: 승리는 실제로 이긴 방의 증빙(claim)을 이번 쓰기에서 함께 만들어야 함
+    function claimPath(id) { return /databases/$(database)/documents/claims/$(id); }
+    function pvpResult(n, o) {
+      return soloGames(n) == soloGames(o) && sameBests(n, o)
+        && (
+          (pvpOf(n).w == pvpOf(o).w + 1 && pvpOf(n).l == pvpOf(o).l
+            && n.lastClaim is string
+            && !exists(claimPath(n.lastClaim)) && existsAfter(claimPath(n.lastClaim))
+            && getAfter(claimPath(n.lastClaim)).data.uid == me())
+          ||
+          (pvpOf(n).w == pvpOf(o).w && pvpOf(n).l == pvpOf(o).l + 1)
+        );
+    }
+
+    match /scores/{uid} {
+      allow read: if true;
+      allow create, update: if signedIn() && uid == me()
+        && validScore(request.resource.data, resource == null ? {} : resource.data)
+        && (nickOnly(request.resource.data, resource == null ? {} : resource.data)
+            || soloGame(request.resource.data, resource == null ? {} : resource.data)
+            || pvpResult(request.resource.data, resource == null ? {} : resource.data));
+    }
+
+    // 컴퓨터 대결 시작 기록 (본인만)
+    match /sessions/{uid} {
+      allow read, delete: if signedIn() && uid == me();
+      allow create, update: if signedIn() && uid == me()
+        && request.resource.data.keys().hasOnly(['level', 'startedAt'])
+        && request.resource.data.level in ['easy', 'mid', 'hard']
+        && request.resource.data.startedAt == request.time;
+    }
+
+    // 1:1 승리 증빙: 방 결과가 내 승리일 때만, 방·회차당 한 번
+    match /claims/{id} {
+      allow read: if true;
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['code', 'round', 'uid'])
+        && request.resource.data.uid == me()
+        && request.resource.data.round is int
+        && id == request.resource.data.code + '_' + string(request.resource.data.round) + '_' + me()
+        && get(/databases/$(database)/documents/rooms/$(request.resource.data.code)).data.status == 'done'
+        && get(/databases/$(database)/documents/rooms/$(request.resource.data.code)).data.winner == me()
+        && get(/databases/$(database)/documents/rooms/$(request.resource.data.code)).data.round == request.resource.data.round;
+    }
+
+    /* ---------------- 1:1 대결 방 ---------------- */
+    // 방 만들기 속도 제한: 30초에 한 번
+    match /limits/{uid} {
+      allow read: if signedIn() && uid == me();
+      allow create, update: if signedIn() && uid == me()
+        && request.resource.data.keys().hasOnly(['lastRoomAt'])
+        && request.resource.data.lastRoomAt == request.time
+        && (resource == null || request.time > resource.data.lastRoomAt + duration.value(30, 's'));
+    }
+
+    function roomKeys() {
+      return ['code', 'host', 'hostNick', 'guest', 'guestNick', 'status', 'round', 'words',
+              'turn', 'turnStart', 'pending', 'winner', 'reason', 'acc', 'createdAt'];
+    }
+    function lastWordOk(ws) {
+      return ws.size() == 0 || (ws[ws.size() - 1].w is string && ws[ws.size() - 1].w.size() <= 12);
+    }
+
     match /rooms/{code} {
-      allow read: if request.auth != null;
-      allow create: if request.auth != null
-                    && request.resource.data.host == request.auth.uid;
-      allow update: if request.auth != null && (
-                       resource.data.host == request.auth.uid ||
-                       resource.data.guest == request.auth.uid ||
-                       (resource.data.guest == null && request.resource.data.guest == request.auth.uid));
+      allow read: if signedIn();
+
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(roomKeys())
+        && request.resource.data.code == code
+        && request.resource.data.host == me()
+        && request.resource.data.hostNick is string && request.resource.data.hostNick.size() <= 12
+        && request.resource.data.guest == null
+        && request.resource.data.status == 'waiting'
+        && request.resource.data.words.size() == 0
+        && request.resource.data.createdAt == request.time
+        && getAfter(/databases/$(database)/documents/limits/$(me())).data.lastRoomAt == request.time;
+
+      allow update: if signedIn()
+        && (resource.data.host == me() || resource.data.guest == me() || resource.data.guest == null)
+        && request.resource.data.keys().hasOnly(roomKeys())
+        && request.resource.data.host == resource.data.host
+        && request.resource.data.code == resource.data.code
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.status in ['waiting', 'playing', 'done']
+        && request.resource.data.words is list
+        && request.resource.data.words.size() <= 400
+        && (request.resource.data.words.size() == resource.data.words.size()
+            || request.resource.data.words.size() == resource.data.words.size() + 1
+            || request.resource.data.words.size() == 1)
+        && lastWordOk(request.resource.data.words)
+        && (resource.data.guest == null
+            ? (request.resource.data.guest == me()
+               && request.resource.data.guestNick is string && request.resource.data.guestNick.size() <= 12)
+            : (request.resource.data.guest == resource.data.guest
+               && request.resource.data.guestNick == resource.data.guestNick))
+        && (request.resource.data.winner == null
+            || request.resource.data.winner == request.resource.data.host
+            || request.resource.data.winner == request.resource.data.guest)
+        && (request.resource.data.turn == null
+            || request.resource.data.turn == request.resource.data.host
+            || request.resource.data.turn == request.resource.data.guest);
+
       allow delete: if false;
     }
   }

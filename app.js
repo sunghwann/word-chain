@@ -1,4 +1,4 @@
-import { firebaseConfig } from './firebase-config.js';
+import { firebaseConfig, appCheckSiteKey } from './firebase-config.js';
 
 const $ = id => document.getElementById(id);
 const FB_VER = '10.14.1';
@@ -173,6 +173,7 @@ function soloStart(lv) {
   if (!FULL) return;
   closeDlg(); show('home');
   Object.assign(S, { level: lv, used: new Set(), last: null, turn: 0, hints: LV[lv].hints, accepts: MAX_ACCEPT, score: 0, busy: false, over: false, pending: null });
+  startSession(lv);
   $('soloIdle').classList.add('hidden'); $('soloGame').classList.remove('hidden');
   $('gTitle').textContent = `${LV[lv].name}와(과) 대결`;
   $('chain').innerHTML = ''; noteBox($('note')); $('inp').value = '';
@@ -278,6 +279,11 @@ async function initFirebase() {
     const [app, auth, fs] = await Promise.all([import(base + 'firebase-app.js'), import(base + 'firebase-auth.js'), import(base + 'firebase-firestore.js')]);
     F = fs;
     const a = app.initializeApp(firebaseConfig);
+    // App Check: 이 사이트에서 온 요청만 받도록 (사이트 키가 있을 때만)
+    if (appCheckSiteKey) {
+      const ac = await import(base + 'firebase-app-check.js');
+      ac.initializeAppCheck(a, { provider: new ac.ReCaptchaV3Provider(appCheckSiteKey), isTokenAutoRefreshEnabled: true });
+    }
     db = fs.getFirestore(a);
     const au = auth.getAuth(a);
     const cred = await auth.signInAnonymously(au);
@@ -316,7 +322,8 @@ function renderBoard() {
     let w = 0, l = 0; for (const x of ks) { w += num((r[x] || {}).w); l += num((r[x] || {}).l); }
     return `${w}승 ${l}패`;
   };
-  const rows = ROWS.filter(r => val(r) > 0).sort((a, b) => val(b) - val(a) || num(a.updatedAt) - num(b.updatedAt)).slice(0, 50);
+  const ms = t => (t && typeof t.toMillis === 'function') ? t.toMillis() : 0;
+  const rows = ROWS.filter(r => val(r) > 0).sort((a, b) => val(b) - val(a) || ms(a.updatedAt) - ms(b.updatedAt)).slice(0, 50);
   const board = $('board');
   if (!rows.length) { board.innerHTML = '<p class="muted">아직 기록이 없습니다.</p>'; return; }
   const head = k === 'pvp' ? ['순위', '이름', '승', '전적'] : ['순위', '이름', k === 'total' ? '종합 점수' : '최고 점수', '전적'];
@@ -336,29 +343,75 @@ document.querySelectorAll('#rankSeg button').forEach(b => b.onclick = () => {
   rankKey = b.dataset.k; document.querySelectorAll('#rankSeg button').forEach(x => x.setAttribute('aria-pressed', x === b)); renderBoard();
 });
 
-let writeChain = Promise.resolve();
-function myBody() { const b = MINE ? structuredClone(MINE) : {}; delete b.id; b.nick = myNick() || b.nick || ''; return b; }
-function writeMine(b) {
-  if (!db || !uid) return;
-  b.total = ['easy', 'mid', 'hard'].reduce((n, k) => n + (+((b[k] || {}).best) || 0), 0);
-  b.updatedAt = Date.now();
-  MINE = Object.assign({ id: uid }, b);
+/* 기록 저장 — firestore.rules가 검사하는 형식 그대로 보냄 */
+const CAP = { easy: 1500, mid: 3000, hard: 4500 };
+let writeChain = Promise.resolve(), lastWriteAt = 0, nickTimer = 0;
+const scoreRef = () => F.doc(db, 'scores', uid);
+const sessionRef = () => F.doc(db, 'sessions', uid);
+function myBody() {
+  const src = MINE || {};
+  const b = { nick: myNick() || src.nick || '' };
+  for (const k of ['easy', 'mid', 'hard']) if (src[k]) b[k] = { best: +src[k].best || 0, w: +src[k].w || 0, l: +src[k].l || 0 };
+  if (src.pvp) b.pvp = { w: +src.pvp.w || 0, l: +src.pvp.l || 0 };
+  return b;
+}
+function finish(b) {
+  b.total = ['easy', 'mid', 'hard'].reduce((n, k) => n + ((b[k] || {}).best || 0), 0);
+  b.updatedAt = F.serverTimestamp(); lastWriteAt = Date.now();
+  MINE = Object.assign({ id: uid }, b, { updatedAt: null });
+  return b;
+}
+function queue(fn) {
   $('savedState').textContent = '· 저장 중…';
-  writeChain = writeChain.then(() => F.setDoc(F.doc(db, 'scores', uid), b))
+  writeChain = writeChain.then(fn)
     .then(() => { $('savedState').textContent = '· 저장됨'; })
     .catch(e => { console.error(e); $('savedState').textContent = '· 저장 실패'; });
 }
+// 컴퓨터 대결 시작 기록(세션). 끝날 때 이 세션을 지우면서 점수를 올려야 규칙을 통과함
+function startSession(level) {
+  if (!db || !uid) { S.session = null; return; }
+  S.session = F.setDoc(sessionRef(), { level, startedAt: F.serverTimestamp() }).then(() => true, e => { console.error(e); return false; });
+}
 function recordSolo(win) {
-  if (!db || !uid) return false;
+  if (!db || !uid || !S.session) return false;
   const b = myBody(); const x = Object.assign({ best: 0, w: 0, l: 0 }, b[S.level] || {});
-  const best = S.score > x.best; if (best) x.best = S.score; win ? x.w++ : x.l++; b[S.level] = x;
-  writeMine(b); return best;
+  const sc = Math.min(S.score, CAP[S.level]);
+  const best = sc > x.best; if (best) x.best = sc; win ? x.w++ : x.l++; b[S.level] = x;
+  finish(b);
+  const sess = S.session; S.session = null;
+  queue(async () => {
+    if (!(await sess)) throw new Error('세션이 없어 기록하지 못함');
+    const batch = F.writeBatch(db);
+    batch.set(scoreRef(), b); batch.delete(sessionRef());
+    await batch.commit();
+  });
+  return best;
 }
-function recordPvp(win) {
+function recordPvp(win, code, round) {
   if (!db || !uid) return;
-  const b = myBody(); const x = Object.assign({ w: 0, l: 0 }, b.pvp || {}); win ? x.w++ : x.l++; b.pvp = x; writeMine(b);
+  const b = myBody(); const x = Object.assign({ w: 0, l: 0 }, b.pvp || {}); win ? x.w++ : x.l++; b.pvp = x;
+  finish(b);
+  queue(async () => {
+    if (!win) return F.setDoc(scoreRef(), b);
+    const id = `${code}_${round}_${uid}`;
+    b.lastClaim = id;
+    const batch = F.writeBatch(db);
+    batch.set(F.doc(db, 'claims', id), { code, round, uid });
+    batch.set(scoreRef(), b);
+    await batch.commit();
+  });
 }
-function saveNick() { if (db && uid && MINE) { const b = myBody(); writeMine(b); } }
+// 닉네임은 5초에 한 번만 저장 가능 → 몰아서 한 번에
+function saveNick() {
+  if (!db || !uid) return;
+  clearTimeout(nickTimer);
+  const wait = Math.max(0, lastWriteAt + 6000 - Date.now());
+  nickTimer = setTimeout(() => {
+    if (MINE && MINE.nick === myNick()) return;
+    const b = finish(myBody());
+    queue(() => F.setDoc(scoreRef(), b));
+  }, wait);
+}
 
 /* ---------- 1:1 대결 ---------- */
 const PVP_LIMIT = 20;
@@ -376,13 +429,14 @@ async function makeRoom() {
       const code = newCode(); const ref = F.doc(db, 'rooms', code);
       const ok = await F.runTransaction(db, async t => {
         const s = await t.get(ref); if (s.exists()) return false;
-        t.set(ref, { code, host: uid, hostNick: myNick() || '방장', guest: null, guestNick: '', status: 'waiting', round: 1, words: [], turn: null, turnStart: 0, pending: null, winner: null, reason: '', acc: {}, createdAt: Date.now() });
+        t.set(ref, { code, host: uid, hostNick: myNick() || '방장', guest: null, guestNick: '', status: 'waiting', round: 1, words: [], turn: null, turnStart: 0, pending: null, winner: null, reason: '', acc: {}, createdAt: F.serverTimestamp() });
+        t.set(F.doc(db, 'limits', uid), { lastRoomAt: F.serverTimestamp() }); // 방 만들기는 30초에 한 번
         return true;
       });
       if (ok) { openRoom(code); return; }
     }
     noteBox($('lobbyNote'), 'err', '방을 만들지 못했어요. 다시 시도해 주세요.');
-  } catch (e) { console.error(e); noteBox($('lobbyNote'), 'err', '방을 만들지 못했어요. Firestore 규칙을 확인해 주세요.'); }
+  } catch (e) { console.error(e); noteBox($('lobbyNote'), 'err', '방을 만들지 못했어요. 방은 30초에 하나씩 만들 수 있어요. 잠시 후 다시 시도해 주세요.'); }
   finally { $('mkRoom').disabled = false; }
 }
 async function joinRoom(code) {
@@ -457,7 +511,7 @@ function renderRoom(r) {
   if (r.status === 'done') {
     const key = r.code + ':' + r.round;
     const win = r.winner === uid;
-    if (!recorded[key]) { recorded[key] = 1; store.set('kk-pvp-rec', recorded); recordPvp(win); }
+    if (!recorded[key]) { recorded[key] = 1; store.set('kk-pvp-rec', recorded); recordPvp(win, r.code, r.round || 1); }
     if (shownRound !== key) {
       shownRound = key;
       const why = r.reason === 'timeout' ? `${nameOf(r, r.winner === r.host ? r.guest : r.host)}의 시간 초과` : `${nameOf(r, r.winner === r.host ? r.guest : r.host)}의 포기`;
