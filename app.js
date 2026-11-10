@@ -1,7 +1,7 @@
-import { firebaseConfig, appCheckSiteKey } from './firebase-config.js?v=202611100840';
+import { firebaseConfig, appCheckSiteKey } from './firebase-config.js?v=202611100842';
 
 // 배포할 때마다 바꾸는 버전. version.json과 같아야 함
-const APP_VERSION = '202611100840';
+const APP_VERSION = '202611100842';
 
 const $ = id => document.getElementById(id);
 const FB_VER = '10.14.1';
@@ -202,7 +202,7 @@ function soloTimer() {
 function soloStart(lv) {
   if (!FULL) return;
   closeDlg(); show('home');
-  Object.assign(S, { level: lv, used: new Set(), last: null, turn: 0, hints: LV[lv].hints, score: 0, busy: false, over: false, pending: null });
+  Object.assign(S, { level: lv, used: new Set(), last: null, turn: 0, hints: LV[lv].hints, score: 0, busy: false, over: false, pending: null, away: 0 });
   startSession(lv);
   $('soloIdle').classList.add('hidden'); $('soloGame').classList.remove('hidden');
   $('gTitle').textContent = `${LV[lv].name}와(과) 대결`;
@@ -570,7 +570,8 @@ function renderRoom(r) {
     if (!recorded[key]) { recorded[key] = 1; store.set('kk-pvp-rec', recorded); recordPvp(win, r.code, r.round || 1); }
     if (shownRound !== key) {
       shownRound = key;
-      const why = r.reason === 'timeout' ? `${nameOf(r, r.winner === r.host ? r.guest : r.host)}의 시간 초과` : `${nameOf(r, r.winner === r.host ? r.guest : r.host)}의 포기`;
+      const loserName = nameOf(r, r.winner === r.host ? r.guest : r.host);
+      const why = r.reason === 'timeout' ? `${loserName}의 시간 초과` : r.reason === 'away' ? `${loserName}이(가) 차례 중에 다른 창으로 나가 반칙패` : `${loserName}의 포기`;
       status(null, null, '');
       dialog(win ? '승리했습니다' : '패배했습니다', why, `단어 ${r.words.length}개 이어짐`, '다시 하기', rematch);
     }
@@ -610,12 +611,12 @@ async function pvpSubmit() {
     $('pInp').value = ''; noteBox($('pNote'));
   } catch (e) { noteBox($('pNote'), 'err', esc(e.message || '보내지 못했어요.')); $('pInp').disabled = false; }
 }
-async function pvpGiveup() {
+async function pvpGiveup(reason = 'giveup') {
   if (!room || room.status !== 'playing') return;
   try {
     await F.runTransaction(db, async t => {
       const s = await t.get(roomRef); const x = s.data(); if (x.status !== 'playing') return;
-      t.update(roomRef, { status: 'done', winner: other(x), reason: 'giveup', pending: null });
+      t.update(roomRef, { status: 'done', winner: other(x), reason: typeof reason === 'string' ? reason : 'giveup', pending: null });
     });
   } catch (e) { console.error(e); }
 }
@@ -662,6 +663,33 @@ for (const id of ['inp', 'pInp']) {
   el.addEventListener('drop', deny);
   el.addEventListener('beforeinput', e => { if (e.inputType === 'insertFromPaste' || e.inputType === 'insertFromDrop' || e.inputType === 'insertFromPasteAsQuotation') deny(e); });
 }
+
+/* =========================================================
+   내 차례에 다른 창·앱으로 나가면 반칙 (1번 경고, 2번째 패배)
+   다른 곳에서 AI·검색으로 단어를 찾아오는 걸 막기 위함
+   ========================================================= */
+let awayAt = 0, pvpAway = { key: '', n: 0 };
+function onAway() {
+  if (Date.now() - awayAt < 1500) return; // blur와 화면 숨김이 같이 와도 한 번만
+  awayAt = Date.now();
+  // 컴퓨터 대결: 내 차례(입력 가능)일 때
+  if (!S.over && !S.busy && S.last) {
+    S.away = (S.away || 0) + 1;
+    if (S.away >= 2) { soloEnd(false, '차례 중에 다른 창으로 나가서 반칙패예요.'); return; }
+    noteBox($('note'), 'err', '⚠️ 차례 중에 다른 창이나 앱으로 나갔어요. 한 번 더 나가면 반칙패예요.');
+    return;
+  }
+  // 1:1: 내 차례일 때
+  if (room && room.status === 'playing' && room.turn === uid) {
+    const key = room.code + ':' + (room.round || 1);
+    if (pvpAway.key !== key) pvpAway = { key, n: 0 };
+    pvpAway.n++;
+    if (pvpAway.n >= 2) { pvpGiveup('away'); return; }
+    noteBox($('pNote'), 'err', '⚠️ 차례 중에 다른 창이나 앱으로 나갔어요. 한 번 더 나가면 반칙패예요.');
+  }
+}
+window.addEventListener('blur', onAway);
+document.addEventListener('visibilitychange', () => { if (document.hidden) onAway(); });
 
 /* =========================================================
    새 버전 자동 적용: 서버의 version.json이 바뀌면 새로고침
