@@ -1,7 +1,7 @@
-import { firebaseConfig, appCheckSiteKey } from './firebase-config.js?v=202611100846';
+import { firebaseConfig, appCheckSiteKey } from './firebase-config.js?v=202611100855';
 
 // 배포할 때마다 바꾸는 버전. version.json과 같아야 함
-const APP_VERSION = '202611100846';
+const APP_VERSION = '202611100855';
 
 const $ = id => document.getElementById(id);
 const FB_VER = '10.14.1';
@@ -243,26 +243,34 @@ function aiTurn() {
     soloPlay(w, 'ai'); S.busy = false; setSoloInput(true); soloTimer();
   }, 450 + Math.random() * 600);
 }
-// 사람이 한글 자판으로 치면 반드시 '조합' 이벤트가 생김. AI·자동 입력은 글자를 바로 꽂아 넣어서 조합이 없음
-const typed = { inp: { comp: false, keys: 0 }, pInp: { comp: false, keys: 0 } };
+// 사람이 한글을 치면 'ㅎ → 하 → 한'처럼 중간 단계가 반드시 생김
+// (조합 이벤트, 낱자 ㅎ·ㅏ가 잠깐 보임, 같은 자리 글자가 바뀜 중 하나)
+// AI·자동 입력은 완성된 글자를 바로 꽂아 넣어서 중간 단계가 없음
+const fresh = () => ({ human: false, prev: '' });
+const typed = { inp: fresh(), pInp: fresh() };
 for (const id of ['inp', 'pInp']) {
   const el = $(id);
-  el.addEventListener('compositionstart', () => { typed[id].comp = true; });
-  el.addEventListener('compositionupdate', () => { typed[id].comp = true; });
-  el.addEventListener('keydown', e => { if (e.isTrusted) typed[id].keys++; });
-  el.addEventListener('input', () => { if (!el.value) typed[id] = { comp: false, keys: 0 }; });
+  const mark = () => { typed[id].human = true; };
+  el.addEventListener('compositionstart', mark);
+  el.addEventListener('compositionupdate', mark);
+  el.addEventListener('input', e => {
+    const t = typed[id], v = el.value;
+    if (!v) { typed[id] = fresh(); return; }
+    if (e.inputType === 'insertCompositionText') t.human = true;
+    if (/[\u3131-\u318E\u1100-\u11FF]/.test(v)) t.human = true;          // 낱자(ㅎ, ㅏ …)가 보임
+    if (v.length === t.prev.length && v !== t.prev) t.human = true;        // 같은 자리 글자가 바뀜(하→한)
+    if (v.length < t.prev.length) t.human = true;                         // 지웠다 다시 씀
+    t.prev = v;
+  });
 }
-function humanTyped(id, w) {
-  const t = typed[id];
-  return t.comp; // 한글 조합이 한 번이라도 있어야 함
-}
-function resetTyped(id) { typed[id] = { comp: false, keys: 0 }; }
+function humanTyped(id) { return typed[id].human; }
+function resetTyped(id) { typed[id] = fresh(); }
 const AUTO_MSG = '자동 입력이 감지됐어요. 한글 자판으로 직접 입력해 주세요.';
 
 function soloSubmit() {
   if (S.busy || S.over) return;
   const w = $('inp').value.trim().replace(/\s/g, '');
-  if (w && !humanTyped('inp', w)) { noteBox($('note'), 'err', AUTO_MSG); $('inp').value = ''; resetTyped('inp'); return; }
+  if (w && !humanTyped('inp')) { noteBox($('note'), 'err', AUTO_MSG); $('inp').value = ''; resetTyped('inp'); return; }
   const r = check(w, S.last, S.used, S.level === 'hard'); // 비표준어는 고수에서만
   if (r) { noteBox($('note'), 'err', esc(r)); $('inp').select(); return; }
   soloCommit(w);
@@ -616,7 +624,7 @@ async function finishTimeout(ts) {
 async function pvpSubmit() {
   const r = room; if (!r || r.status !== 'playing' || r.turn !== uid || r.pending) return;
   const w = $('pInp').value.trim().replace(/\s/g, '');
-  if (w && !humanTyped('pInp', w)) { noteBox($('pNote'), 'err', AUTO_MSG); $('pInp').value = ''; resetTyped('pInp'); return; }
+  if (w && !humanTyped('pInp')) { noteBox($('pNote'), 'err', AUTO_MSG); $('pInp').value = ''; resetTyped('pInp'); return; }
   const used = new Set(r.words.map(x => x.w));
   const last = endOf(r.words[r.words.length - 1].w);
   const c = check(w, last, used);
