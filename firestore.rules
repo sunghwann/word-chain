@@ -1,97 +1,85 @@
 rules_version = '2';
-// 버전: 2026-11-10 v4
+// 버전: 2026-11-10 v5 (단순화)
 service cloud.firestore {
   match /databases/{database}/documents {
 
     function signedIn() { return request.auth != null; }
     function me() { return request.auth.uid; }
 
-    /* ---------------- 랭킹 ---------------- */
-    function zero() { return {'best': 0, 'sum': 0, 'w': 0, 'l': 0}; }
-    function sumOf(m) { return m.get('sum', 0); }
-    function lvOf(d, k) { return d.get(k, zero()); }
-    function pvpOf(d) { return d.get('pvp', {'w': 0, 'l': 0}); }
-    function games(m) { return m.w + m.l; }
-    function soloGames(d) { return games(lvOf(d, 'easy')) + games(lvOf(d, 'mid')) + games(lvOf(d, 'hard')); }
-    function okLv(m, cap) {
-      return m.keys().hasOnly(['best', 'sum', 'w', 'l'])
-        && m.best is int && m.best >= 0 && m.best <= cap
-        && sumOf(m) is int && sumOf(m) >= 0 && sumOf(m) <= 100000000
-        && m.w is int && m.w >= 0 && m.l is int && m.l >= 0;
-    }
-    function notLess(n, o, k) {
-      return lvOf(n, k).best >= lvOf(o, k).best && sumOf(lvOf(n, k)) >= sumOf(lvOf(o, k)) && lvOf(n, k).w >= lvOf(o, k).w && lvOf(n, k).l >= lvOf(o, k).l;
-    }
-    // 최고 점수와 누적 점수가 그대로인지
-    function sameBest(n, o, k) { return lvOf(n, k).best == lvOf(o, k).best && sumOf(lvOf(n, k)) == sumOf(lvOf(o, k)); }
-    function sameBests(n, o) { return sameBest(n, o, 'easy') && sameBest(n, o, 'mid') && sameBest(n, o, 'hard'); }
-    function samePvp(n, o) { return pvpOf(n).w == pvpOf(o).w && pvpOf(n).l == pvpOf(o).l; }
+    /* ---------------- 랭킹 ----------------
+       기록 문서는 항상 이 모양 그대로 저장함:
+       { nick, easy:{best,sum,w,l}, mid:{…}, hard:{…}, pvp:{w,l}, total, updatedAt, (lastClaim) } */
 
-    // 형식 검사 + 기록은 줄어들 수 없음
-    function validScore(n, o) {
+    function lvOk(m, cap) {
+      return m.keys().hasOnly(['best', 'sum', 'w', 'l'])
+        && m.best is int && m.sum is int && m.w is int && m.l is int
+        && m.best >= 0 && m.best <= cap && m.sum >= 0 && m.w >= 0 && m.l >= 0;
+    }
+    function shapeOk(n) {
       return n.keys().hasOnly(['nick', 'easy', 'mid', 'hard', 'pvp', 'total', 'updatedAt', 'lastClaim'])
+        && n.keys().hasAll(['nick', 'easy', 'mid', 'hard', 'pvp', 'total', 'updatedAt'])
         && n.nick is string && n.nick.size() <= 12
-        && okLv(lvOf(n, 'easy'), 1500) && okLv(lvOf(n, 'mid'), 3000) && okLv(lvOf(n, 'hard'), 4500)
-        && pvpOf(n).keys().hasOnly(['w', 'l']) && pvpOf(n).w is int && pvpOf(n).l is int
-        && n.total == sumOf(lvOf(n, 'easy')) + sumOf(lvOf(n, 'mid')) + sumOf(lvOf(n, 'hard'))
-        && n.updatedAt == request.time
-        && notLess(n, o, 'easy') && notLess(n, o, 'mid') && notLess(n, o, 'hard')
-        && pvpOf(n).w >= pvpOf(o).w && pvpOf(n).l >= pvpOf(o).l;
+        && lvOk(n.easy, 1500) && lvOk(n.mid, 3000) && lvOk(n.hard, 4500)
+        && n.pvp.keys().hasOnly(['w', 'l']) && n.pvp.w is int && n.pvp.l is int
+        && n.total == n.easy.sum + n.mid.sum + n.hard.sum
+        && n.updatedAt == request.time;
+    }
+    // 처음 만드는 기록은 모두 0에서 시작한 것으로 봄
+    function blank() {
+      return {'easy': {'best': 0, 'sum': 0, 'w': 0, 'l': 0}, 'mid': {'best': 0, 'sum': 0, 'w': 0, 'l': 0},
+              'hard': {'best': 0, 'sum': 0, 'w': 0, 'l': 0}, 'pvp': {'w': 0, 'l': 0}};
     }
 
     // 1) 닉네임만 바꿈 (5초에 한 번)
     function nickOnly(n, o) {
-      return soloGames(n) == soloGames(o) && samePvp(n, o) && sameBests(n, o)
-        && (!(o.get('updatedAt', null) is timestamp) || request.time > o.updatedAt + duration.value(5, 's'));
+      return n.easy == o.easy && n.mid == o.mid && n.hard == o.hard && n.pvp == o.pvp
+        && (!('updatedAt' in o) || request.time > o.updatedAt + duration.value(5, 's'));
     }
 
-    // 2) 컴퓨터 대결 한 판: 시작할 때 만든 세션을 이번 쓰기에서 지워야 하고,
-    //    이번 판 점수(누적 증가분)는 걸린 시간에 비례한 상한을 넘을 수 없음 (단어 1개당 최소 1.5초)
+    // 2) 컴퓨터 대결 한 판: 시작 기록(세션)을 이번 쓰기에서 지워야 하고,
+    //    이번 판 점수는 걸린 시간 비례 상한(단어 1개당 최소 1.5초)과 난이도별 상한을 넘을 수 없음
     function sessionPath() { return /databases/$(database)/documents/sessions/$(me()); }
-    function capOk(best, L, secs) {
-      return (L == 'easy' && best * 3 <= 90  + 20 * secs)
-          || (L == 'mid'  && best * 3 <= 300 + 40 * secs)
-          || (L == 'hard' && best * 3 <= 750 + 60 * secs);
+    function capOk(g, L, secs) {
+      return (L == 'easy' && g <= 1500 && g * 3 <= 90  + 20 * secs)
+          || (L == 'mid'  && g <= 3000 && g * 3 <= 300 + 40 * secs)
+          || (L == 'hard' && g <= 4500 && g * 3 <= 750 + 60 * secs);
+    }
+    function levelGame(nl, ol, L, secs) {
+      let g = nl.sum - ol.sum;
+      return nl.w >= ol.w && nl.l >= ol.l && nl.w + nl.l == ol.w + ol.l + 1
+        && g >= 0 && capOk(g, L, secs)
+        && ((g > ol.best && nl.best == g) || (g <= ol.best && nl.best == ol.best));
     }
     function soloGame(n, o) {
       let s = get(sessionPath()).data;
-      let L = s.level;
-      let secs = (request.time - s.startedAt).seconds();
-      let g = sumOf(lvOf(n, L)) - sumOf(lvOf(o, L));
-      let ob = lvOf(o, L).best;
       return exists(sessionPath()) && !existsAfter(sessionPath())
-        && soloGames(n) == soloGames(o) + 1
-        && games(lvOf(n, L)) == games(lvOf(o, L)) + 1
-        && (L == 'easy' || sameBest(n, o, 'easy'))
-        && (L == 'mid'  || sameBest(n, o, 'mid'))
-        && (L == 'hard' || sameBest(n, o, 'hard'))
-        && g >= 0 && capOk(g, L, secs)
-        && ((L == 'easy' && g <= 1500) || (L == 'mid' && g <= 3000) || (L == 'hard' && g <= 4500))
-        && ((g > ob && lvOf(n, L).best == g) || (g <= ob && lvOf(n, L).best == ob))
-        && samePvp(n, o);
+        && n.pvp == o.pvp
+        && (s.level == 'easy' || n.easy == o.easy)
+        && (s.level == 'mid'  || n.mid  == o.mid)
+        && (s.level == 'hard' || n.hard == o.hard)
+        && levelGame(n[s.level], o[s.level], s.level, (request.time - s.startedAt).seconds());
     }
 
     // 3) 1:1 결과: 승리는 실제로 이긴 방의 증빙(claim)을 이번 쓰기에서 함께 만들어야 함
     function claimPath(id) { return /databases/$(database)/documents/claims/$(id); }
     function pvpResult(n, o) {
-      return soloGames(n) == soloGames(o) && sameBests(n, o)
+      return n.easy == o.easy && n.mid == o.mid && n.hard == o.hard
         && (
-          (pvpOf(n).w == pvpOf(o).w + 1 && pvpOf(n).l == pvpOf(o).l
+          (n.pvp.w == o.pvp.w + 1 && n.pvp.l == o.pvp.l
             && n.lastClaim is string
             && !exists(claimPath(n.lastClaim)) && existsAfter(claimPath(n.lastClaim))
             && getAfter(claimPath(n.lastClaim)).data.uid == me())
-          ||
-          (pvpOf(n).w == pvpOf(o).w && pvpOf(n).l == pvpOf(o).l + 1)
+          || (n.pvp.w == o.pvp.w && n.pvp.l == o.pvp.l + 1)
         );
     }
 
     function okWrite(n, o) {
-      return validScore(n, o) && (nickOnly(n, o) || soloGame(n, o) || pvpResult(n, o));
+      return shapeOk(n) && (nickOnly(n, o) || soloGame(n, o) || pvpResult(n, o));
     }
 
     match /scores/{uid} {
       allow read: if true;
-      allow create: if signedIn() && uid == me() && okWrite(request.resource.data, {});
+      allow create: if signedIn() && uid == me() && okWrite(request.resource.data, blank());
       allow update: if signedIn() && uid == me() && okWrite(request.resource.data, resource.data);
     }
 
@@ -116,6 +104,7 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/rooms/$(request.resource.data.code)).data.winner == me()
         && get(/databases/$(database)/documents/rooms/$(request.resource.data.code)).data.round == request.resource.data.round;
     }
+
 
     /* ---------------- 1:1 대결 방 ---------------- */
     // 방 만들기 속도 제한: 30초에 한 번

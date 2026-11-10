@@ -385,8 +385,9 @@ const sessionRef = () => F.doc(db, 'sessions', uid);
 function myBody() {
   const src = MINE || {};
   const b = { nick: myNick() || src.nick || '' };
-  for (const k of ['easy', 'mid', 'hard']) if (src[k]) b[k] = { best: +src[k].best || 0, sum: +src[k].sum || 0, w: +src[k].w || 0, l: +src[k].l || 0 };
-  if (src.pvp) b.pvp = { w: +src.pvp.w || 0, l: +src.pvp.l || 0 };
+  // 규칙이 검사하는 모양 그대로 항상 전부 채워서 보냄
+  for (const k of ['easy', 'mid', 'hard']) { const x = src[k] || {}; b[k] = { best: +x.best || 0, sum: +x.sum || 0, w: +x.w || 0, l: +x.l || 0 }; }
+  const p = src.pvp || {}; b.pvp = { w: +p.w || 0, l: +p.l || 0 };
   return b;
 }
 function finish(b) {
