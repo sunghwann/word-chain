@@ -1,7 +1,7 @@
-import { firebaseConfig, appCheckSiteKey } from './firebase-config.js?v=202611100858';
+import { firebaseConfig, appCheckSiteKey } from './firebase-config.js?v=202611100859';
 
 // 배포할 때마다 바꾸는 버전. version.json과 같아야 함
-const APP_VERSION = '202611100858';
+const APP_VERSION = '202611100859';
 
 const $ = id => document.getElementById(id);
 const FB_VER = '10.14.1';
@@ -226,12 +226,16 @@ function aiChoose() {
     return pool.length ? pick(pool) : null;
   }
   if (S.level === 'mid') {
+    // 중수: 가끔(8%)만 한방 단어, 평소엔 '받기 좀 까다로운' 정도. 받을 말이 20개 미만인 끝 글자(꾼 등)는 웬만하면 피함
     const killers = full.filter(w => rem(endOf(w)) === 0);
-    if (killers.length && Math.random() < .25) return pick(killers);
+    if (killers.length && Math.random() < .08) return pick(killers);
     let pool = com.length ? com : full.filter(w => w.length <= 4);
     if (!pool.length) return null;
-    pool = pool.map(w => [w, rem(endOf(w))]).sort((a, b) => a[1] - b[1]);
-    return pick(pool.slice(0, Math.max(1, Math.ceil(pool.length * .4))))[0];
+    pool = pool.map(w => [w, rem(endOf(w))]);
+    const fair = pool.filter(x => x[1] >= 20);
+    if (fair.length) pool = fair;
+    pool.sort((a, b) => a[1] - b[1]);
+    return pick(pool.slice(0, Math.max(1, Math.ceil(pool.length * .5))))[0];
   }
   if (!full.length) return null;
   let best = Infinity, bw = [];
