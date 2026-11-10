@@ -1,7 +1,7 @@
-import { firebaseConfig, appCheckSiteKey } from './firebase-config.js?v=202611100855';
+import { firebaseConfig, appCheckSiteKey } from './firebase-config.js?v=202611100858';
 
 // 배포할 때마다 바꾸는 버전. version.json과 같아야 함
-const APP_VERSION = '202611100855';
+const APP_VERSION = '202611100858';
 
 const $ = id => document.getElementById(id);
 const FB_VER = '10.14.1';
@@ -29,7 +29,7 @@ function timeBar(el, frac, low) {
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const dictUrl = w => 'https://stdict.korean.go.kr/search/searchResult.do?searchKeyword=' + encodeURIComponent(w);
 
-let FULL = null, VERBS = new Set(), EXTRA = new Set(), BY = {}, CBY = {}, COMMON = [];
+let FULL = null, VERBS = new Set(), EXTRA = new Set(), XBY = {}, CNT = {}, BY = {}, CBY = {}, COMMON = [];
 async function loadDict() {
   try {
     const res = await fetch('words.bin?v=' + APP_VERSION);
@@ -41,7 +41,10 @@ async function loadDict() {
     for (const w of f) (BY[w[0]] || (BY[w[0]] = [])).push(w);
     for (const w of COMMON) (CBY[w[0]] || (CBY[w[0]] = [])).push(w);
     if (d.v) VERBS = new Set(d.v.split('\n'));
-    if (d.x) EXTRA = new Set(d.x.split('\n')); // 방언·옛말·북한어: 사람만 // 동사·형용사: 사람만 쓸 수 있음(컴퓨터·힌트는 명사만)
+    if (d.x) EXTRA = new Set(d.x.split('\n')); // 방언·옛말·북한어: 사람은 언제나, 컴퓨터는 고수에서만
+    for (const w of EXTRA) (XBY[w[0]] || (XBY[w[0]] = [])).push(w);
+    // 사람이 받아칠 수 있는 단어 수(첫 글자별): 명사 + 동사·형용사 + 방언 등
+    for (const set of [FULL, VERBS, EXTRA]) for (const w of set) CNT[w[0]] = (CNT[w[0]] || 0) + 1;
     $('dictState').textContent = `사전 준비 완료 · 명사 ${f.length.toLocaleString()}개 · 동사·형용사 ${VERBS.size.toLocaleString()}개 · 방언·옛말·북한어 ${EXTRA.size.toLocaleString()}개`;
     document.querySelectorAll('[data-new]').forEach(b => b.disabled = false);
   } catch (e) {
@@ -51,9 +54,10 @@ async function loadDict() {
 // 대상 단어 집합(used)을 기준으로 남은 단어 수
 function remainingFn(used) {
   const usedBy = {};
-  for (const w of used) if (FULL.has(w)) usedBy[w[0]] = (usedBy[w[0]] || 0) + 1;
-  return ch => starts(ch).reduce((n, s) => n + ((BY[s] || []).length - (usedBy[s] || 0)), 0);
+  for (const w of used) usedBy[w[0]] = (usedBy[w[0]] || 0) + 1;
+  return ch => starts(ch).reduce((n, s) => n + ((CNT[s] || 0) - (usedBy[s] || 0)), 0);
 }
+const RUDE = /좆|좃|씹|씨발|시발|보지|자지|니미|개새|병신|븅신|엿먹|똥구멍|불알|음경|음부|성기/;
 const cands = (map, ch, used) => starts(ch).flatMap(s => map[s] || []).filter(w => !used.has(w));
 function startWord() {
   const rem = remainingFn(new Set());
@@ -212,7 +216,10 @@ function soloStart(lv) {
 }
 function aiChoose() {
   const rem = remainingFn(S.used);
-  const full = cands(BY, S.last, S.used), com = cands(CBY, S.last, S.used);
+  // 고수만 방언·옛말·북한어까지 씀. 컴퓨터는 비속어는 쓰지 않음(회사에서도 쓰는 게임이라)
+  const clean = w => !RUDE.test(w);
+  const full = (S.level === 'hard' ? cands(BY, S.last, S.used).concat(cands(XBY, S.last, S.used)) : cands(BY, S.last, S.used)).filter(clean);
+  const com = cands(CBY, S.last, S.used).filter(clean);
   if (S.level === 'easy') {
     if (S.turn >= 6 && Math.random() < .12) return null;
     let pool = com.filter(w => rem(endOf(w)) >= 5); if (!pool.length) pool = com;
@@ -246,16 +253,18 @@ function aiTurn() {
 // 사람이 한글을 치면 'ㅎ → 하 → 한'처럼 중간 단계가 반드시 생김
 // (조합 이벤트, 낱자 ㅎ·ㅏ가 잠깐 보임, 같은 자리 글자가 바뀜 중 하나)
 // AI·자동 입력은 완성된 글자를 바로 꽂아 넣어서 중간 단계가 없음
-const fresh = () => ({ human: false, prev: '' });
+const fresh = () => ({ human: false, prev: '', n: 0, types: new Set(), comp: 0, keys: 0 });
 const typed = { inp: fresh(), pInp: fresh() };
 for (const id of ['inp', 'pInp']) {
   const el = $(id);
-  const mark = () => { typed[id].human = true; };
+  const mark = () => { typed[id].human = true; typed[id].comp++; };
+  el.addEventListener('keydown', () => { typed[id].keys++; });
   el.addEventListener('compositionstart', mark);
   el.addEventListener('compositionupdate', mark);
   el.addEventListener('input', e => {
     const t = typed[id], v = el.value;
     if (!v) { typed[id] = fresh(); return; }
+    t.n++; if (e.inputType) t.types.add(e.inputType);
     if (e.inputType === 'insertCompositionText') t.human = true;
     if (/[\u3131-\u318E\u1100-\u11FF]/.test(v)) t.human = true;          // 낱자(ㅎ, ㅏ …)가 보임
     if (v.length === t.prev.length && v !== t.prev) t.human = true;        // 같은 자리 글자가 바뀜(하→한)
@@ -265,13 +274,18 @@ for (const id of ['inp', 'pInp']) {
 }
 function humanTyped(id) { return typed[id].human; }
 function resetTyped(id) { typed[id] = fresh(); }
-const AUTO_MSG = '자동 입력이 감지됐어요. 한글 자판으로 직접 입력해 주세요.';
+function autoMsg(id) {
+  const t = typed[id], ua = navigator.userAgent;
+  const dev = /iPhone|iPad/.test(ua) ? 'iOS' : /Android/.test(ua) ? 'Android' : /Mac/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows' : '기타';
+  const br = /Edg/.test(ua) ? 'Edge' : /CriOS|Chrome/.test(ua) ? 'Chrome' : /Firefox|FxiOS/.test(ua) ? 'Firefox' : /Safari/.test(ua) ? 'Safari' : '기타';
+  return `자동 입력이 감지됐어요. 한글 자판으로 직접 입력해 주세요.<br><span class="muted small">진단: ${dev} ${br} · 입력 ${t.n} · 키 ${t.keys} · 조합 ${t.comp} · ${[...t.types].join(',') || '-'}</span>`;
+}
 
 function soloSubmit() {
   if (S.busy || S.over) return;
   const w = $('inp').value.trim().replace(/\s/g, '');
-  if (w && !humanTyped('inp')) { noteBox($('note'), 'err', AUTO_MSG); $('inp').value = ''; resetTyped('inp'); return; }
-  const r = check(w, S.last, S.used, S.level === 'hard'); // 비표준어는 고수에서만
+  if (w && !humanTyped('inp')) { noteBox($('note'), 'err', autoMsg('inp')); $('inp').value = ''; resetTyped('inp'); return; }
+  const r = check(w, S.last, S.used);
   if (r) { noteBox($('note'), 'err', esc(r)); $('inp').select(); return; }
   soloCommit(w);
 }
@@ -624,7 +638,7 @@ async function finishTimeout(ts) {
 async function pvpSubmit() {
   const r = room; if (!r || r.status !== 'playing' || r.turn !== uid || r.pending) return;
   const w = $('pInp').value.trim().replace(/\s/g, '');
-  if (w && !humanTyped('pInp')) { noteBox($('pNote'), 'err', AUTO_MSG); $('pInp').value = ''; resetTyped('pInp'); return; }
+  if (w && !humanTyped('pInp')) { noteBox($('pNote'), 'err', autoMsg('pInp')); $('pInp').value = ''; resetTyped('pInp'); return; }
   const used = new Set(r.words.map(x => x.w));
   const last = endOf(r.words[r.words.length - 1].w);
   const c = check(w, last, used);
