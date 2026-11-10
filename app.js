@@ -26,7 +26,7 @@ function timeBar(el, frac, low) {
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const dictUrl = w => 'https://stdict.korean.go.kr/search/searchResult.do?searchKeyword=' + encodeURIComponent(w);
 
-let FULL = null, VERBS = new Set(), BY = {}, CBY = {}, COMMON = [];
+let FULL = null, VERBS = new Set(), EXTRA = new Set(), BY = {}, CBY = {}, COMMON = [];
 async function loadDict() {
   try {
     const res = await fetch('words.bin');
@@ -37,8 +37,9 @@ async function loadDict() {
     FULL = new Set(f);
     for (const w of f) (BY[w[0]] || (BY[w[0]] = [])).push(w);
     for (const w of COMMON) (CBY[w[0]] || (CBY[w[0]] = [])).push(w);
-    if (d.v) VERBS = new Set(d.v.split('\n')); // 동사·형용사: 사람만 쓸 수 있음(컴퓨터·힌트는 명사만)
-    $('dictState').textContent = `사전 준비 완료 · 명사 ${f.length.toLocaleString()}개 · 동사·형용사 ${VERBS.size.toLocaleString()}개`;
+    if (d.v) VERBS = new Set(d.v.split('\n'));
+    if (d.x) EXTRA = new Set(d.x.split('\n')); // 방언·옛말·북한어: 사람만 // 동사·형용사: 사람만 쓸 수 있음(컴퓨터·힌트는 명사만)
+    $('dictState').textContent = `사전 준비 완료 · 명사 ${f.length.toLocaleString()}개 · 동사·형용사 ${VERBS.size.toLocaleString()}개 · 방언·옛말·북한어 ${EXTRA.size.toLocaleString()}개`;
     document.querySelectorAll('[data-new]').forEach(b => b.disabled = false);
   } catch (e) {
     $('dictState').textContent = '사전을 불러오지 못했어요. 최신 브라우저에서, 웹 주소(https)로 열어 주세요.';
@@ -62,7 +63,7 @@ function check(w, last, used) {
   if (w.length < 2) return '두 글자 이상이어야 해요.';
   if (last && !starts(last).includes(w[0])) return `“${starts(last).join('” 또는 “')}”(으)로 시작해야 해요.`;
   if (used.has(w)) return '이미 나온 단어예요.';
-  if (!FULL.has(w) && !VERBS.has(w)) return `“${w}”은(는) 사전에 없는 단어예요.`;
+  if (!FULL.has(w) && !VERBS.has(w) && !EXTRA.has(w)) return `“${w}”은(는) 사전에 없는 단어예요.`;
   return null;
 }
 
@@ -94,6 +95,7 @@ function chainItem(w, who, opts = {}) {
   a.title = '표준국어대사전에서 찾기';
   a.innerHTML = esc(w.slice(0, -1)) + '<b>' + esc(endOf(w)) + '</b>';
   li.appendChild(a);
+  if (EXTRA.has(w)) { const t = document.createElement('span'); t.className = 'tag'; t.textContent = '비표준어'; t.title = '방언·옛말·북한어'; li.appendChild(t); }
   const by = document.createElement('span'); by.className = 'by'; by.textContent = who; li.appendChild(by);
   return li;
 }
