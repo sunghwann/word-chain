@@ -49,6 +49,10 @@
 3. **사이트 키**를 `firebase-config.js`의 `appCheckSiteKey`에 넣고 커밋합니다.
 4. App Check 화면에서 요청이 '확인됨'으로 들어오는 것을 확인한 뒤, **Cloud Firestore**와 **Authentication**에 **적용(Enforce)**을 켭니다.
 
+## 업데이트 배포
+
+파일을 고친 뒤 `tools/bump-version.sh`를 실행하고 커밋하세요. `version.json`의 버전이 바뀌면, 이미 사이트를 열어 둔 사람의 브라우저도 1분 안에(또는 탭으로 돌아올 때) 새 버전을 감지해 자동으로 새로고침합니다. 게임 중이면 판이 끝난 뒤 적용됩니다.
+
 ## GitHub Pages
 
 저장소 **Settings → Pages**에서 Source를 **Deploy from a branch**, 브랜치를 `main` / `(root)`로 두면

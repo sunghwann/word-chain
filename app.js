@@ -1,4 +1,7 @@
-import { firebaseConfig, appCheckSiteKey } from './firebase-config.js';
+import { firebaseConfig, appCheckSiteKey } from './firebase-config.js?v=202611100812';
+
+// 배포할 때마다 바꾸는 버전. version.json과 같아야 함
+const APP_VERSION = '202611100812';
 
 const $ = id => document.getElementById(id);
 const FB_VER = '10.14.1';
@@ -29,7 +32,7 @@ const dictUrl = w => 'https://stdict.korean.go.kr/search/searchResult.do?searchK
 let FULL = null, VERBS = new Set(), EXTRA = new Set(), BY = {}, CBY = {}, COMMON = [];
 async function loadDict() {
   try {
-    const res = await fetch('words.bin');
+    const res = await fetch('words.bin?v=' + APP_VERSION);
     if (!res.ok) throw new Error(res.status);
     const txt = await new Response(res.body.pipeThrough(new DecompressionStream('gzip'))).text();
     const d = JSON.parse(txt);
@@ -623,6 +626,32 @@ $('copyLink').onclick = async () => {
 };
 
 /* ========================================================= */
+/* =========================================================
+   새 버전 자동 적용: 서버의 version.json이 바뀌면 새로고침
+   (게임 중이면 끝날 때까지 기다렸다가 안내)
+   ========================================================= */
+let newVersion = null;
+async function checkVersion() {
+  try {
+    const r = await fetch('version.json?t=' + Date.now(), { cache: 'no-store' });
+    const v = (await r.json()).v;
+    if (!v || v === APP_VERSION) return;
+    newVersion = v;
+    const busy = !S.over || (room && room.status === 'playing');
+    if (!busy) reloadNew();
+    else $('savedState').textContent = '· 새 버전 있음 (판이 끝나면 적용)';
+  } catch (e) { }
+}
+function reloadNew() {
+  const u = location.pathname + '?v=' + encodeURIComponent(newVersion) + location.hash;
+  location.replace(u);
+}
+setInterval(checkVersion, 60000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) checkVersion(); });
+setTimeout(checkVersion, 3000);
+// 판이 끝난 뒤 새 버전이 있으면 결과 창을 닫을 때 적용
+$('dlgClose').addEventListener('click', () => { if (newVersion && S.over && !(room && room.status === 'playing')) reloadNew(); });
+
 showRec();
 loadDict();
 initFirebase();
