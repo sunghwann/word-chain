@@ -1,5 +1,5 @@
 rules_version = '2';
-// 버전: 2026-11-10 v3 (누적 점수)
+// 버전: 2026-11-10 v4
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -67,7 +67,7 @@ service cloud.firestore {
         && (L == 'hard' || sameBest(n, o, 'hard'))
         && g >= 0 && capOk(g, L, secs)
         && ((L == 'easy' && g <= 1500) || (L == 'mid' && g <= 3000) || (L == 'hard' && g <= 4500))
-        && lvOf(n, L).best == (g > ob ? g : ob)
+        && ((g > ob && lvOf(n, L).best == g) || (g <= ob && lvOf(n, L).best == ob))
         && samePvp(n, o);
     }
 
@@ -85,13 +85,14 @@ service cloud.firestore {
         );
     }
 
+    function okWrite(n, o) {
+      return validScore(n, o) && (nickOnly(n, o) || soloGame(n, o) || pvpResult(n, o));
+    }
+
     match /scores/{uid} {
       allow read: if true;
-      allow create, update: if signedIn() && uid == me()
-        && validScore(request.resource.data, resource == null ? {} : resource.data)
-        && (nickOnly(request.resource.data, resource == null ? {} : resource.data)
-            || soloGame(request.resource.data, resource == null ? {} : resource.data)
-            || pvpResult(request.resource.data, resource == null ? {} : resource.data));
+      allow create: if signedIn() && uid == me() && okWrite(request.resource.data, {});
+      allow update: if signedIn() && uid == me() && okWrite(request.resource.data, resource.data);
     }
 
     // 컴퓨터 대결 시작 기록 (본인만)
@@ -120,10 +121,13 @@ service cloud.firestore {
     // 방 만들기 속도 제한: 30초에 한 번
     match /limits/{uid} {
       allow read: if signedIn() && uid == me();
-      allow create, update: if signedIn() && uid == me()
+      allow create: if signedIn() && uid == me()
+        && request.resource.data.keys().hasOnly(['lastRoomAt'])
+        && request.resource.data.lastRoomAt == request.time;
+      allow update: if signedIn() && uid == me()
         && request.resource.data.keys().hasOnly(['lastRoomAt'])
         && request.resource.data.lastRoomAt == request.time
-        && (resource == null || request.time > resource.data.lastRoomAt + duration.value(30, 's'));
+        && request.time > resource.data.lastRoomAt + duration.value(30, 's');
     }
 
     function roomKeys() {
@@ -161,11 +165,12 @@ service cloud.firestore {
             || request.resource.data.words.size() == resource.data.words.size() + 1
             || request.resource.data.words.size() == 1)
         && lastWordOk(request.resource.data.words)
-        && (resource.data.guest == null
-            ? (request.resource.data.guest == me()
-               && request.resource.data.guestNick is string && request.resource.data.guestNick.size() <= 12)
-            : (request.resource.data.guest == resource.data.guest
-               && request.resource.data.guestNick == resource.data.guestNick))
+        && ((resource.data.guest == null
+             && request.resource.data.guest == me()
+             && request.resource.data.guestNick is string && request.resource.data.guestNick.size() <= 12)
+            || (resource.data.guest != null
+             && request.resource.data.guest == resource.data.guest
+             && request.resource.data.guestNick == resource.data.guestNick))
         && (request.resource.data.winner == null
             || request.resource.data.winner == request.resource.data.host
             || request.resource.data.winner == request.resource.data.guest)
