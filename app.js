@@ -1,7 +1,7 @@
-import { firebaseConfig, appCheckSiteKey } from './firebase-config.js?v=202611100845';
+import { firebaseConfig, appCheckSiteKey } from './firebase-config.js?v=202611100846';
 
 // 배포할 때마다 바꾸는 버전. version.json과 같아야 함
-const APP_VERSION = '202611100845';
+const APP_VERSION = '202611100846';
 
 const $ = id => document.getElementById(id);
 const FB_VER = '10.14.1';

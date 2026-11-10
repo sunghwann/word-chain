@@ -355,6 +355,19 @@ tr.mine td{background:var(--brand-soft)}
   </div>
 </div>
 
-<script type="module" src="app.js?v=202611100845"></script>
+<script>
+/* AI 에이전트·자동화 브라우저면 게임 파일(사전 2MB·서버 연결)을 아예 불러오지 않음 */
+(function () {
+  var ua = navigator.userAgent;
+  var bot = /ChatGPT|GPTBot|OAI-SearchBot|OpenAI|ClaudeBot|Claude-User|anthropic|PerplexityBot|Perplexity-User|Google-Extended|Bytespider|HeadlessChrome|Atlas/i.test(ua)
+    || navigator.webdriver === true;
+  if (bot) {
+    document.body.innerHTML = '<div style="padding:48px 24px;font:16px/1.6 system-ui,sans-serif;color:#242424"><h1 style="font-size:22px">접속할 수 없습니다</h1><p>자동화 도구나 AI 에이전트로는 이 게임을 할 수 없어요.</p></div>';
+    return;
+  }
+  var s = document.createElement('script'); s.type = 'module'; s.src = 'app.js?v=202611100846';
+  document.body.appendChild(s);
+})();
+</script>
 </body>
 </html>
