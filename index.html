@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">
 <title>끝말잇기 - 문서</title>
 <meta name="robots" content="noindex, nofollow, noai, noimageai">
 <style>
@@ -71,6 +71,16 @@ td.n{white-space:nowrap}
   th,td{padding:6px 7px}
   .seg{flex-wrap:wrap}
 
+  /* 게임 중: 위쪽 큰 제목·메뉴·상태줄을 숨겨 단어 목록 자리를 넓힘 (힌트·포기는 도크에 있음) */
+  body.playing #v-home > h1, body.playing #dictState, body.playing .rcmds, body.playing .status, body.playing #v-pvp > h1, body.playing #v-pvp > .meta{display:none}
+  body.playing .page{padding-top:12px}
+  body.playing h2{margin-top:4px}
+  .dock{margin:10px -16px 0;padding:8px 16px 10px}
+  .dock .nextrow,.dock .dock-acts,.dock .note{margin-left:0}
+  .entry .no{display:none}
+  .entry input{font-size:17px}
+  .chain li{padding:2px 0}
+
   /* 난이도 표 → 카드 */
   .lvtable thead{display:none}
   .lvtable,.lvtable tbody{display:block;border:0}
@@ -134,11 +144,24 @@ tr.mine td{background:var(--brand-soft)}
 .entry input:focus{outline:none}
 .entry input:disabled{--bc:#bdbdbd}
 .entry input.low{--bc:var(--red)}
-.nextinfo{font-size:12.5px;color:var(--sub);margin:4px 0 0 38px}
+.nextinfo{font-size:12.5px;color:var(--sub)}
+/* 입력 도크: 스크롤해도 화면 아래에 고정 */
+.dock{position:sticky;bottom:0;z-index:5;background:var(--page);margin:14px -72px 0;padding:10px 72px 14px;
+  border-top:1px solid var(--line2);box-shadow:0 -8px 14px -12px rgba(0,0,0,.25)}
+.nextrow{display:flex;justify-content:space-between;align-items:baseline;margin-left:38px;font-size:12.5px}
+.dtime{color:var(--sub);font-variant-numeric:tabular-nums}
+.dtime.low{color:var(--red);font-weight:600}
+.dock .entry{margin-top:2px}
+.entry .send{flex:none;padding:6px 16px}
+.dock .note{margin-top:8px}
+.dock-acts{display:flex;gap:8px;margin:8px 0 0 38px}
+.dock-acts .btn{padding:4px 12px;font-size:12.5px}
+body.playing .canvas{padding-bottom:0}
+body.playing .page{padding-bottom:0}
 .nextinfo b{color:var(--brand);font-size:14px}
 
 /* 메모(댓글) */
-.note{margin:12px 0 0 38px;background:var(--note);border-left:3px solid var(--note-line);padding:8px 12px;font-size:13px}
+.note{margin:12px 0 0 38px;max-height:30vh;overflow:auto;background:var(--note);border-left:3px solid var(--note-line);padding:8px 12px;font-size:13px}
 .note.err{background:#fdf3f4;border-left-color:var(--red)}
 .note.ok{background:#f1faf1;border-left-color:var(--green)}
 .note .acts{margin-top:6px;display:flex;gap:6px;flex-wrap:wrap}
@@ -244,11 +267,16 @@ tr.mine td{background:var(--brand-soft)}
   <div id="soloGame" class="hidden">
     <h2 id="gTitle">하수와 대결</h2>
     <ol class="chain" id="chain"></ol>
-    <div class="entry"><span class="no" id="entryNo">2.</span>
-      <input id="inp" placeholder="여기에 단어를 입력하고 Enter" maxlength="12" autocomplete="off" enterkeyhint="send" aria-label="단어 입력">
+    <!-- 입력 영역: 화면 아래에 고정 (모바일은 키보드 바로 위) -->
+    <div class="dock">
+      <div class="nextrow"><span class="nextinfo" id="nextInfo"></span><span class="dtime" id="soloTime"></span></div>
+      <div class="entry"><span class="no" id="entryNo">2.</span>
+        <input id="inp" placeholder="단어 입력 후 Enter" maxlength="12" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="send" aria-label="단어 입력">
+        <button class="btn primary send" id="sendBtn" type="button">내기</button>
+      </div>
+      <div id="note"></div>
+      <div class="dock-acts"><button class="btn" id="dHint" type="button">힌트</button><button class="btn" id="dGiveup" type="button">포기</button></div>
     </div>
-    <div class="nextinfo" id="nextInfo"></div>
-    <div id="note"></div>
   </div>
 </section>
 
@@ -282,15 +310,18 @@ tr.mine td{background:var(--brand-soft)}
     </div>
     <div id="roomPlay" class="hidden">
       <ol class="chain" id="pChain"></ol>
-      <div class="entry"><span class="no" id="pEntryNo"></span>
-        <input id="pInp" maxlength="12" autocomplete="off" enterkeyhint="send" aria-label="단어 입력">
-      </div>
-      <div class="nextinfo" id="pNext"></div>
-      <div id="pNote"></div>
-      <div class="field" style="margin-top:16px">
-        <button class="btn" id="pGiveup">포기</button>
-        <button class="btn hidden" id="pRematch">다시 하기</button>
-        <button class="btn" id="pLeave">방 나가기</button>
+      <div class="dock">
+        <div class="nextrow"><span class="nextinfo" id="pNext"></span><span class="dtime" id="pTime"></span></div>
+        <div class="entry"><span class="no" id="pEntryNo"></span>
+          <input id="pInp" maxlength="12" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="send" aria-label="단어 입력">
+          <button class="btn primary send" id="pSend" type="button">내기</button>
+        </div>
+        <div id="pNote"></div>
+        <div class="dock-acts">
+          <button class="btn" id="pGiveup" type="button">포기</button>
+          <button class="btn hidden" id="pRematch" type="button">다시 하기</button>
+          <button class="btn" id="pLeave" type="button">방 나가기</button>
+        </div>
       </div>
     </div>
   </div>
@@ -378,7 +409,7 @@ tr.mine td{background:var(--brand-soft)}
     document.body.innerHTML = '<div style="padding:48px 24px;font:16px/1.6 system-ui,sans-serif;color:#242424"><h1 style="font-size:22px">접속할 수 없습니다</h1><p>자동화 도구나 AI 에이전트로는 이 게임을 할 수 없어요.</p></div>';
     return;
   }
-  var s = document.createElement('script'); s.type = 'module'; s.src = 'app.js?v=202611100911';
+  var s = document.createElement('script'); s.type = 'module'; s.src = 'app.js?v=202611100922';
   document.body.appendChild(s);
 })();
 </script>

@@ -1,7 +1,7 @@
-import { firebaseConfig, appCheckSiteKey } from './firebase-config.js?v=202611100911';
+import { firebaseConfig, appCheckSiteKey } from './firebase-config.js?v=202611100922';
 
 // 배포할 때마다 바꾸는 버전. version.json과 같아야 함
-const APP_VERSION = '202611100911';
+const APP_VERSION = '202611100922';
 
 const $ = id => document.getElementById(id);
 const FB_VER = '10.14.1';
@@ -233,10 +233,10 @@ function showRec() {
   for (const k in LV) { const x = r[k] || { w: 0, l: 0 }; $('r-' + k).textContent = `${x.w}승 ${x.l}패`; }
 }
 function setSoloInput(on) {
-  $('inp').disabled = !on; $('cGiveup').disabled = !on;
-  $('cHint').disabled = !on || S.hints <= 0;
-  $('cHint').lastChild.textContent = LV[S.level].hints ? `힌트 (${S.hints})` : '힌트';
-  if (on) $('inp').focus();
+  $('inp').disabled = !on; $('cGiveup').disabled = !on; $('dGiveup').disabled = !on; $('sendBtn').disabled = !on;
+  $('cHint').disabled = $('dHint').disabled = !on || S.hints <= 0;
+  $('cHint').lastChild.textContent = $('dHint').textContent = LV[S.level].hints ? `힌트 (${S.hints})` : '힌트 없음';
+  if (on) $('inp').focus({ preventScroll: true });
 }
 function soloPlay(w, who) {
   S.used.add(w); S.last = endOf(w); S.turn++;
@@ -246,22 +246,26 @@ function soloPlay(w, who) {
   $('entryNo').textContent = (S.turn + 1) + '.';
   nextInfo($('nextInfo'), S.last);
   status(S.turn, `${LV[S.level].name} 대결 · ${S.score}점`);
-  $('inp').scrollIntoView({ block: 'nearest' });
+  scrollEnd();
 }
+// 단어 목록 맨 아래(최신 단어)로 스크롤. 입력 도크는 화면 아래에 고정돼 있음
+function scrollEnd() { const c = document.querySelector('.canvas'); requestAnimationFrame(() => { c.scrollTop = c.scrollHeight; }); }
 function soloTimer() {
   cancelAnimationFrame(S.raf); const t = LV[S.level].time;
-  if (!t) { status(null, null, '제한 시간 없음'); timeBar($('inp'), null); return; }
+  if (!t) { status(null, null, '제한 시간 없음'); timeBar($('inp'), null); $('soloTime').textContent = '제한 시간 없음'; $('soloTime').classList.remove('low'); return; }
   S.tEnd = Date.now() + t * 1000;
   const tick = () => {
     const ms = S.tEnd - Date.now(), left = Math.ceil(ms / 1000);
     timeBar($('inp'), ms / (t * 1000), left <= 5);
     status(null, null, `남은 시간 ${Math.max(0, left)}초`);
+    $('soloTime').textContent = `남은 시간 ${Math.max(0, left)}초`; $('soloTime').classList.toggle('low', left <= 5);
     if (left <= 0) soloEnd(false, '제한 시간 안에 단어를 내지 못했어요.');
     else S.raf = requestAnimationFrame(tick);
   };
   tick();
 }
 function soloStart(lv) {
+  document.body.classList.add('playing');
   if (!FULL) return;
   closeDlg(); show('home');
   Object.assign(S, { level: lv, used: new Set(), last: null, turn: 0, hints: LV[lv].hints, score: 0, busy: false, over: false, pending: null, away: 0 });
@@ -368,6 +372,7 @@ function soloHint() {
   noteBox($('note'), 'ok', `힌트: <b>${esc(w)}</b>`);
 }
 function soloEnd(win, why) {
+  document.body.classList.remove('playing');
   S.over = true; cancelAnimationFrame(S.raf); setSoloInput(false); S.pending = null;
   if (win) S.score += LV[S.level].bonus;
   const r = store.get('kk-rec', {}); const x = r[S.level] || { w: 0, l: 0 }; win ? x.w++ : x.l++; r[S.level] = x; store.set('kk-rec', r); showRec();
@@ -382,8 +387,12 @@ function soloQuit() { if (!S.over && !S.busy) soloEnd(false, `“${S.last}”에
 
 document.querySelectorAll('[data-new]').forEach(b => { b.disabled = true; b.onclick = () => needNick(() => soloStart(b.dataset.new)); });
 $('inp').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); soloSubmit(); } });
-$('cHint').onclick = () => { if (view === 'home') soloHint(); };
-$('cGiveup').onclick = () => { if (view === 'home') soloQuit(); };
+$('cHint').onclick = $('dHint').onclick = () => { if (view === 'home') soloHint(); };
+$('cGiveup').onclick = $('dGiveup').onclick = () => { if (view === 'home') soloQuit(); };
+// '내기' 버튼: 누를 때 입력 칸 포커스를 빼앗지 않아 모바일 키보드가 내려가지 않음
+for (const id of ['sendBtn', 'pSend']) $(id).addEventListener('pointerdown', e => e.preventDefault());
+$('sendBtn').onclick = () => soloSubmit();
+$('pSend').onclick = () => pvpSubmit();
 
 /* =========================================================
    Firebase (랭킹 · 1:1)
@@ -636,6 +645,7 @@ function openRoom(code) {
   clearInterval(pTick); pTick = setInterval(pvpClock, 250);
 }
 function leaveRoom() {
+  document.body.classList.remove('playing');
   if (unsubRoom) unsubRoom(); unsubRoom = null; clearInterval(pTick); room = null; roomRef = null;
   $('pvpRoom').classList.add('hidden'); $('pvpLobby').classList.remove('hidden');
   try { history.replaceState(null, '', location.pathname); } catch (e) { }
@@ -647,6 +657,7 @@ function renderRoom(r) {
   const me = r.host === uid || r.guest === uid;
   if (!me) { leaveRoom(); noteBox($('lobbyNote'), 'err', '이 방에 참가하지 않은 상태예요.'); return; }
   const waiting = r.status === 'waiting';
+  document.body.classList.toggle('playing', r.status === 'playing');
   $('roomWait').classList.toggle('hidden', !waiting); $('roomPlay').classList.toggle('hidden', waiting);
   if (waiting) { $('roomTitle').textContent = '상대를 기다리는 중'; status(0, '1:1 대기', ''); return; }
 
@@ -663,9 +674,10 @@ function renderRoom(r) {
   const last = endOf(r.words[r.words.length - 1].w);
   const myTurn = r.status === 'playing' && r.turn === uid;
   $('pEntryNo').textContent = (r.words.length + 1) + '.';
-  $('pInp').disabled = !myTurn || !!r.pending;
-  $('pInp').placeholder = myTurn ? '내 차례예요. 단어를 입력하고 Enter' : r.status === 'playing' ? `${nameOf(r, opp)}의 차례` : '';
-  if (myTurn && (!prev || prev.turn !== uid)) { $('pInp').value = ''; setTimeout(() => $('pInp').focus(), 30); }
+  $('pInp').disabled = $('pSend').disabled = !myTurn || !!r.pending;
+  $('pInp').placeholder = myTurn ? '내 차례예요. 단어 입력 후 Enter' : r.status === 'playing' ? `${nameOf(r, opp)}의 차례` : '';
+  if (myTurn && (!prev || prev.turn !== uid)) { $('pInp').value = ''; setTimeout(() => $('pInp').focus({ preventScroll: true }), 30); }
+  if (!prev || prev.words.length !== r.words.length) scrollEnd();
   nextInfo($('pNext'), r.status === 'playing' ? last : null);
   $('pGiveup').classList.toggle('hidden', r.status !== 'playing');
   $('pRematch').classList.toggle('hidden', r.status !== 'done');
@@ -692,6 +704,7 @@ function pvpClock() {
   const r = room; if (!r || r.status !== 'playing') return;
   const ms = r.turnStart + PVP_LIMIT * 1000 - Date.now(), left = Math.ceil(ms / 1000);
   timeBar($('pInp'), ms / (PVP_LIMIT * 1000), left <= 5);
+  $('pTime').textContent = `${r.turn === uid ? '내 차례' : nameOf(r, r.turn) + ' 차례'} · ${Math.max(0, left)}초`; $('pTime').classList.toggle('low', left <= 5);
   status(null, null, `${r.turn === uid ? '내 차례' : nameOf(r, r.turn) + ' 차례'} · 남은 시간 ${Math.max(0, left)}초`);
   if (left <= -1 && timeoutSent !== r.turnStart) { timeoutSent = r.turnStart; finishTimeout(r.turnStart); }
 }
@@ -802,6 +815,26 @@ function onAway() {
 }
 window.addEventListener('blur', onAway);
 document.addEventListener('visibilitychange', () => { if (document.hidden) onAway(); });
+
+/* =========================================================
+   모바일 키보드 대응: 실제로 보이는 영역(visualViewport) 높이에 화면을 맞춤
+   ========================================================= */
+if (window.visualViewport) {
+  const vv = window.visualViewport;
+  const fit = () => {
+    const h = Math.round(vv.height) + 'px';
+    document.documentElement.style.height = h; document.body.style.height = h;
+    if (vv.offsetTop > 0) window.scrollTo(0, 0);
+    if (document.body.classList.contains('playing')) scrollEnd();
+  };
+  vv.addEventListener('resize', fit); vv.addEventListener('scroll', fit); fit();
+}
+for (const id of ['inp', 'pInp']) $(id).addEventListener('focus', () => setTimeout(scrollEnd, 300));
+// 안내문이 생기거나 사라져 도크 높이가 바뀌면 다시 맨 아래로 (최신 단어가 가려지지 않게)
+if (window.ResizeObserver) {
+  const ro = new ResizeObserver(() => { if (document.body.classList.contains('playing')) scrollEnd(); });
+  document.querySelectorAll('.dock').forEach(d => ro.observe(d));
+}
 
 /* =========================================================
    새 버전 자동 적용: 서버의 version.json이 바뀌면 새로고침
