@@ -67,5 +67,6 @@
 | `firebase-config.js` | Firebase 설정값 (직접 입력) |
 | `firestore.rules` | Firestore 보안 규칙 |
 | `words.bin` | 사전 데이터 (gzip) |
+| `dict/*.json` | 뜻풀이 (첫 글자별 조각, PC 팝업용) |
 
-사전 데이터: [41ways/kkeutmal](https://github.com/41ways/kkeutmal)의 `dict/words.txt`에서 표준국어대사전 명사와 방언·옛말·북한어를, [hunspell-dict-ko](https://github.com/spellcheck-ko/hunspell-dict-ko)에서 동사·형용사 기본형을 골라 썼습니다. 원자료는 국립국어원 《표준국어대사전》([CC BY-SA 2.0 KR](https://creativecommons.org/licenses/by-sa/2.0/kr/))과 [hunspell-dict-ko](https://github.com/spellcheck-ko/hunspell-dict-ko)(CC BY-SA 4.0)이며, `words.bin`은 같은 CC BY-SA 조건을 따릅니다.
+사전 데이터: [41ways/kkeutmal](https://github.com/41ways/kkeutmal)의 `dict/words.txt`에서 표준국어대사전 명사와 방언·옛말·북한어를, [hunspell-dict-ko](https://github.com/spellcheck-ko/hunspell-dict-ko)에서 동사·형용사 기본형을 골라 썼습니다. 원자료는 국립국어원 《표준국어대사전》([CC BY-SA 2.0 KR](https://creativecommons.org/licenses/by-sa/2.0/kr/))과 [hunspell-dict-ko](https://github.com/spellcheck-ko/hunspell-dict-ko)(CC BY-SA 4.0)이며, `words.bin`과 `dict/`의 뜻풀이(같은 저장소의 `public/dict/`)는 같은 CC BY-SA 조건을 따릅니다.

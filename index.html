@@ -113,6 +113,18 @@ tr.mine td{background:var(--brand-soft)}
 .chain .me .w{font-weight:600}
 .chain li.sys{color:var(--sub);font-size:12.5px;font-style:italic;border-bottom:0}
 .tag{font-size:10.5px;border:1px solid var(--amber);color:var(--amber);border-radius:3px;padding:0 4px;margin-left:6px}
+.tag.kill{border-color:var(--red);color:var(--red);font-weight:600}
+.chain button.w{all:unset;cursor:pointer;font-size:16px;color:var(--ink)}
+.chain button.w:hover{text-decoration:underline}
+.chain button.w:focus-visible{outline:2px solid var(--brand)}
+.chain .me .w{font-weight:600}
+.tipw{cursor:pointer;color:var(--brand)}
+.tipw:hover{text-decoration:underline}
+@media (hover:none){.tipw{cursor:default;color:inherit}}
+.defpop{position:absolute;z-index:20;background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.18);padding:10px 14px 12px;font-size:13.5px;line-height:1.6}
+.defpop-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;font-size:15px}
+.defpop-x{all:unset;cursor:pointer;font-size:18px;line-height:1;color:var(--sub);padding:0 4px}
+.defpop-b{max-height:220px;overflow:auto}
 
 .entry{display:flex;align-items:center;gap:10px;margin-top:10px;padding:6px 0}
 .entry .no{width:28px;text-align:right;color:var(--sub);font-size:12.5px;flex:none}
@@ -311,12 +323,12 @@ tr.mine td{background:var(--brand-soft)}
   <h2>2. 두음법칙</h2>
   <p>끝 글자의 두음법칙 형태로 시작해도 됩니다. 예: 력 → 역, 녀 → 여, 락 → 낙.</p>
   <h2>3. 사전</h2>
-  <p>표준국어대사전의 명사 약 32만 개와 동사·형용사 약 1만 3천 개로 확인합니다. 동사·형용사는 ‘먹다’, ‘예쁘다’처럼 <b>기본형</b>만 됩니다(‘먹었다’ ×). 몬스터·스마트폰 같은 외래어도 사전에 실려 있으면 쓸 수 있습니다. 사전에 실린 <b>방언·옛말·북한어</b>(예: 꾼지람) 약 16만 개도 <b>언제든</b> 쓸 수 있으며, 단어 옆에 ‘비표준어’로 표시됩니다. 사전에 없는 말은 쓸 수 없습니다. 컴퓨터는 명사만 쓰며, 방언·옛말·북한어는 <b>고수</b>만 씁니다. 단어를 누르면 표준국어대사전 검색으로 연결됩니다.</p>
+  <p>표준국어대사전의 명사 약 32만 개와 동사·형용사 약 1만 3천 개로 확인합니다. 동사·형용사는 ‘먹다’, ‘예쁘다’처럼 <b>기본형</b>만 됩니다(‘먹었다’ ×). 몬스터·스마트폰 같은 외래어도 사전에 실려 있으면 쓸 수 있습니다. 사전에 실린 <b>방언·옛말·북한어</b>(예: 꾼지람) 약 16만 개도 <b>언제든</b> 쓸 수 있으며, 단어 옆에 ‘비표준어’로 표시됩니다. 사전에 없는 말은 쓸 수 없습니다. 컴퓨터는 명사만 쓰며, 방언·옛말·북한어는 <b>고수</b>만 씁니다. PC에서는 단어를 누르면 뜻풀이가 작은 창으로 뜹니다.</p>
   <h2>4. 닉네임</h2>
   <p>게임을 시작하려면 닉네임이 필요합니다. 오른쪽 위 <b>작성자</b> 칸에서 언제든 바꿀 수 있으며, 랭킹에 이 이름으로 표시됩니다.</p>
   <h2>5. 승패</h2>
   <p>컴퓨터가 단어를 못 찾으면 승리, 제한 시간 초과나 포기는 패배입니다. 1:1 대결도 같습니다.</p>
-  <p><b>반칙:</b> 내 차례에 다른 창·탭·앱으로 나가면 첫 번째는 경고, 두 번째는 반칙패입니다(다른 곳에서 AI나 검색으로 단어를 찾아오는 것을 막기 위해서입니다). 단어 칸에 붙여넣기도 할 수 없습니다. 단어 뜻은 내 차례가 아닐 때 눌러 보세요.</p>
+  <p><b>반칙:</b> 내 차례에 다른 창·탭·앱으로 나가면 첫 번째는 경고, 두 번째는 반칙패입니다(다른 곳에서 AI나 검색으로 단어를 찾아오는 것을 막기 위해서입니다). 단어 칸에 붙여넣기도 할 수 없습니다. PC에서는 단어를 누르면 뜻이 작은 창으로 떠요(반칙 아님). 모바일에서는 뜻 보기가 없습니다.</p>
   <h2>6. 점수</h2>
   <p>내 단어 1개당 하수 10 · 중수 20 · 고수 30점, 승리 보너스 하수 30 · 중수 100 · 고수 250점. 랭킹은 두 가지입니다. <b>누적 점수</b>는 게임할 때마다 점수가 쌓이는 순위, <b>최고 점수</b>는 한 판에서 낸 가장 높은 점수 순위입니다. 종합 최고 점수는 세 난이도 중 가장 높은 한 판으로 매깁니다. 1:1은 승수로 순위를 매깁니다.</p>
 </section>
@@ -366,7 +378,7 @@ tr.mine td{background:var(--brand-soft)}
     document.body.innerHTML = '<div style="padding:48px 24px;font:16px/1.6 system-ui,sans-serif;color:#242424"><h1 style="font-size:22px">접속할 수 없습니다</h1><p>자동화 도구나 AI 에이전트로는 이 게임을 할 수 없어요.</p></div>';
     return;
   }
-  var s = document.createElement('script'); s.type = 'module'; s.src = 'app.js?v=202611100904';
+  var s = document.createElement('script'); s.type = 'module'; s.src = 'app.js?v=202611100911';
   document.body.appendChild(s);
 })();
 </script>

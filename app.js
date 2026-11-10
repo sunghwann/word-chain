@@ -1,7 +1,7 @@
-import { firebaseConfig, appCheckSiteKey } from './firebase-config.js?v=202611100904';
+import { firebaseConfig, appCheckSiteKey } from './firebase-config.js?v=202611100911';
 
 // 배포할 때마다 바꾸는 버전. version.json과 같아야 함
-const APP_VERSION = '202611100904';
+const APP_VERSION = '202611100911';
 
 const $ = id => document.getElementById(id);
 const FB_VER = '10.14.1';
@@ -97,12 +97,45 @@ function show(v) {
 }
 document.querySelectorAll('.rtabs [role=tab]').forEach(b => b.onclick = () => show(b.dataset.view));
 
+/* ---------- 뜻풀이 팝업 (새 창을 열지 않음 → 반칙으로 안 잡힘). 모바일은 아예 안 띄움 ---------- */
+const IS_MOBILE = matchMedia('(hover: none) and (pointer: coarse)').matches || /iPhone|iPad|Android/.test(navigator.userAgent);
+const shards = new Map();
+function defOf(w) {
+  const key = w.charCodeAt(0).toString(16);
+  if (!shards.has(key)) shards.set(key, fetch(`dict/${key}.json?v=${APP_VERSION}`).then(r => r.ok ? r.json() : {}).catch(() => ({})));
+  return shards.get(key).then(m => m[w] || null);
+}
+let pop = null;
+function closePop() { if (pop) { pop.remove(); pop = null; } }
+async function showMeaning(w, anchor) {
+  closePop();
+  pop = document.createElement('div'); pop.className = 'defpop'; pop.setAttribute('role', 'dialog');
+  pop.innerHTML = `<div class="defpop-h"><b>${esc(w)}</b><button class="defpop-x" aria-label="닫기">×</button></div><div class="defpop-b muted">뜻 불러오는 중…</div>`;
+  document.body.appendChild(pop);
+  const r = anchor.getBoundingClientRect(), pw = Math.min(360, innerWidth - 24);
+  pop.style.width = pw + 'px';
+  pop.style.left = Math.max(12, Math.min(r.left, innerWidth - pw - 12)) + 'px';
+  pop.style.top = (r.bottom + 6 + scrollY) + 'px';
+  pop.querySelector('.defpop-x').onclick = closePop;
+  const me = pop, d = await defOf(w);
+  if (pop !== me) return;
+  const tags = [EXTRA.has(w) ? '방언·옛말·북한어' : '', VERBS.has(w) ? '동사·형용사' : ''].filter(Boolean).join(' · ');
+  const body = !d ? '이 사전에는 뜻풀이가 없어요.' : typeof d === 'string' ? esc(d) : d.map((x, i) => `${'①②③④'[i] || '·'} ${esc(x)}`).join('<br>');
+  me.querySelector('.defpop-b').className = 'defpop-b';
+  me.querySelector('.defpop-b').innerHTML = (tags ? `<span class="tag" style="margin:0 0 6px;display:inline-block">${tags}</span><br>` : '') + body;
+}
+document.addEventListener('click', e => { if (pop && !pop.contains(e.target) && !e.target.closest('.w')) closePop(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closePop(); });
+function wordEl(w, html) {
+  const el = document.createElement(IS_MOBILE ? 'span' : 'button');
+  el.className = 'w'; el.innerHTML = html;
+  if (!IS_MOBILE) { el.type = 'button'; el.title = '뜻 보기'; el.onclick = e => { e.preventDefault(); showMeaning(w, el); }; }
+  return el;
+}
 function chainItem(w, who, opts = {}) {
   const li = document.createElement('li'); if (opts.me) li.className = 'me';
-  const a = document.createElement('a'); a.className = 'w'; a.href = dictUrl(w); a.target = '_blank'; a.rel = 'noopener';
-  a.title = '표준국어대사전에서 찾기';
-  a.innerHTML = esc(w.slice(0, -1)) + '<b>' + esc(endOf(w)) + '</b>';
-  li.appendChild(a);
+  li.appendChild(wordEl(w, esc(w.slice(0, -1)) + '<b>' + esc(endOf(w)) + '</b>'));
+  if (opts.killer) { const t = document.createElement('span'); t.className = 'tag kill'; t.textContent = '한방'; t.title = '이어 갈 단어가 사전에 없는 단어'; li.appendChild(t); }
   if (EXTRA.has(w)) { const t = document.createElement('span'); t.className = 'tag'; t.textContent = '비표준어'; t.title = '방언·옛말·북한어'; li.appendChild(t); }
   const by = document.createElement('span'); by.className = 'by'; by.textContent = who; li.appendChild(by);
   return li;
@@ -133,12 +166,20 @@ function couldPlay(last, used) {
   if (out.length < 5) for (const w of VERBS) if (ss.includes(w[0])) add(w);
   return out;
 }
-function tipHtml(last, used) {
+function tipHtml(last, used, lastWord) {
   const ws = couldPlay(last, used);
   if (!ws) return '';
-  if (!ws.length) return `“${esc(last)}”(으)로 이어 갈 단어는 사전에 하나도 없었어요. 한방 단어에 당했네요!`;
-  return `이런 단어를 낼 수 있었어요: ` + ws.map(w => `<a href="${dictUrl(w)}" target="_blank" rel="noopener"><b>${esc(w)}</b></a>`).join(', ');
+  const n = remainingFn(used)(last);
+  const lw = lastWord ? `“${esc(lastWord)}”은(는) ` : '';
+  if (!ws.length || n === 0) return `💥 ${lw}<b>한방 단어</b>였어요. “${esc(starts(last).join('·'))}”(으)로 이어 갈 단어가 사전에 하나도 없어요.`;
+  const head = n <= 5 ? `⚠️ ${lw}<b>준한방 단어</b>였어요. 이어 갈 단어가 ${n}개뿐이에요: ` : '이런 단어를 낼 수 있었어요: ';
+  return head + ws.map(w => `<span class="tipw" data-w="${esc(w)}"><b>${esc(w)}</b></span>`).join(', ');
 }
+// 결과 창 팁의 단어도 PC에선 팝업으로 뜻 보기
+$('dlgTip').addEventListener('click', e => {
+  const t = e.target.closest('.tipw'); if (!t || IS_MOBILE) return;
+  e.stopPropagation(); showMeaning(t.dataset.w, t);
+});
 function dialog(title, desc, stat, againLabel, onAgain, tip) {
   $('dlgTitle').textContent = title; $('dlgDesc').textContent = desc; $('dlgStat').textContent = stat || '';
   $('dlgTip').innerHTML = tip || ''; $('dlgTip').classList.toggle('hidden', !tip);
@@ -200,7 +241,8 @@ function setSoloInput(on) {
 function soloPlay(w, who) {
   S.used.add(w); S.last = endOf(w); S.turn++;
   if (who === 'me') S.score += LV[S.level].pt;
-  $('chain').appendChild(chainItem(w, who === 'me' ? (myNick() || '나') : '컴퓨터', { me: who === 'me' }));
+  const killer = remainingFn(S.used)(endOf(w)) === 0;
+  $('chain').appendChild(chainItem(w, who === 'me' ? (myNick() || '나') : '컴퓨터', { me: who === 'me', killer }));
   $('entryNo').textContent = (S.turn + 1) + '.';
   nextInfo($('nextInfo'), S.last);
   status(S.turn, `${LV[S.level].name} 대결 · ${S.score}점`);
@@ -334,7 +376,7 @@ function soloEnd(win, why) {
   const me = myRank('sum'), meB = myRank('best');
   setTimeout(() => dialog(win ? '승리했습니다' : '패배했습니다', why,
     `단어 ${S.turn}개 · 이번 판 ${S.score.toLocaleString()}점${best ? ' · 개인 최고 기록' : ''} · ${LV[S.level].name} 전적 ${x.w}승 ${x.l}패${me ? ` · 누적 ${me.pos}위 · 최고 ${meB ? meB.pos : '-'}위` : ''}`,
-    '한 판 더', () => soloStart(S.level), win ? '' : tipHtml(S.last, S.used)), 500);
+    '한 판 더', () => soloStart(S.level), win ? '' : tipHtml(S.last, S.used, [...S.used].pop())), 500);
 }
 function soloQuit() { if (!S.over && !S.busy) soloEnd(false, `“${S.last}”에서 포기했어요.`); }
 
@@ -613,7 +655,10 @@ function renderRoom(r) {
   const ol = $('pChain'); ol.innerHTML = '';
   r.words.forEach(x => {
     if (x.by === 'sys') { const li = chainItem(x.w, '시작 단어'); ol.appendChild(li); }
-    else ol.appendChild(chainItem(x.w, nameOf(r, x.by), { me: x.by === uid }));
+    else {
+      const usedSoFar = new Set(r.words.slice(0, r.words.indexOf(x) + 1).map(y => y.w));
+      ol.appendChild(chainItem(x.w, nameOf(r, x.by), { me: x.by === uid, killer: remainingFn(usedSoFar)(endOf(x.w)) === 0 }));
+    }
   });
   const last = endOf(r.words[r.words.length - 1].w);
   const myTurn = r.status === 'playing' && r.turn === uid;
@@ -639,7 +684,7 @@ function renderRoom(r) {
       status(null, null, '');
       const lastW = r.words[r.words.length - 1].w;
       dialog(win ? '승리했습니다' : '패배했습니다', why, `단어 ${r.words.length}개 이어짐`, '다시 하기', rematch,
-        win ? '' : tipHtml(endOf(lastW), new Set(r.words.map(y => y.w))));
+        win ? '' : tipHtml(endOf(lastW), new Set(r.words.map(y => y.w)), lastW));
     }
   }
 }
