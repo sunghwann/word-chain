@@ -82,9 +82,12 @@ tr.mine td{background:var(--brand-soft)}
 
 .entry{display:flex;align-items:center;gap:10px;margin-top:10px;padding:6px 0}
 .entry .no{width:28px;text-align:right;color:var(--sub);font-size:12.5px;flex:none}
-.entry input{flex:1;min-width:0;border:0;border-bottom:1px solid var(--brand);padding:4px 2px;font-size:16px;background:transparent}
-.entry input:focus{outline:none;border-bottom-width:2px}
-.entry input:disabled{border-bottom-color:var(--line);background:transparent}
+/* 입력창 밑줄 = 남은 시간 막대 (--t: 남은 비율, --bc: 색) */
+.entry input{flex:1;min-width:0;border:0;border-bottom:1px solid var(--line);padding:4px 2px 6px;font-size:16px;
+  background:linear-gradient(var(--bc,var(--brand)),var(--bc,var(--brand))) left bottom / var(--t,100%) 2px no-repeat;transition:background-size .25s linear}
+.entry input:focus{outline:none}
+.entry input:disabled{--bc:#bdbdbd}
+.entry input.low{--bc:var(--red)}
 .nextinfo{font-size:12.5px;color:var(--sub);margin:4px 0 0 38px}
 .nextinfo b{color:var(--brand);font-size:14px}
 

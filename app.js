@@ -18,6 +18,11 @@ function dueum(ch) {
 const starts = ch => { const d = dueum(ch); return d ? [ch, d] : [ch]; };
 const endOf = w => w[w.length - 1];
 const pick = a => a[Math.floor(Math.random() * a.length)];
+// 입력창 밑줄을 남은 시간만큼 줄임 (frac: 0~1, null이면 꽉 참)
+function timeBar(el, frac, low) {
+  el.style.setProperty('--t', (frac == null ? 100 : Math.max(0, Math.min(1, frac)) * 100) + '%');
+  el.classList.toggle('low', !!low);
+}
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const dictUrl = w => 'https://stdict.korean.go.kr/search/searchResult.do?searchKeyword=' + encodeURIComponent(w);
 
@@ -176,10 +181,11 @@ function soloPlay(w, who) {
 }
 function soloTimer() {
   cancelAnimationFrame(S.raf); const t = LV[S.level].time;
-  if (!t) { status(null, null, '제한 시간 없음'); return; }
+  if (!t) { status(null, null, '제한 시간 없음'); timeBar($('inp'), null); return; }
   S.tEnd = Date.now() + t * 1000;
   const tick = () => {
-    const left = Math.ceil((S.tEnd - Date.now()) / 1000);
+    const ms = S.tEnd - Date.now(), left = Math.ceil(ms / 1000);
+    timeBar($('inp'), ms / (t * 1000), left <= 5);
     status(null, null, `남은 시간 ${Math.max(0, left)}초`);
     if (left <= 0) soloEnd(false, '제한 시간 안에 단어를 내지 못했어요.');
     else S.raf = requestAnimationFrame(tick);
@@ -221,7 +227,7 @@ function aiChoose() {
   return pick(pool.filter(w => w.length === short));
 }
 function aiTurn() {
-  S.busy = true; setSoloInput(false); cancelAnimationFrame(S.raf); status(null, null, '컴퓨터 차례');
+  S.busy = true; setSoloInput(false); cancelAnimationFrame(S.raf); status(null, null, '컴퓨터 차례'); timeBar($('inp'), null);
   const th = sysItem('컴퓨터가 생각하는 중…'); $('chain').appendChild(th);
   setTimeout(() => {
     th.remove(); if (S.over) return;
@@ -547,7 +553,8 @@ function renderRoom(r) {
 }
 function pvpClock() {
   const r = room; if (!r || r.status !== 'playing') return;
-  const left = Math.ceil((r.turnStart + PVP_LIMIT * 1000 - Date.now()) / 1000);
+  const ms = r.turnStart + PVP_LIMIT * 1000 - Date.now(), left = Math.ceil(ms / 1000);
+  timeBar($('pInp'), ms / (PVP_LIMIT * 1000), left <= 5);
   status(null, null, `${r.turn === uid ? '내 차례' : nameOf(r, r.turn) + ' 차례'} · 남은 시간 ${Math.max(0, left)}초`);
   if (left <= -1 && timeoutSent !== r.turnStart) { timeoutSent = r.turnStart; finishTimeout(r.turnStart); }
 }
