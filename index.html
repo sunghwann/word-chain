@@ -12,7 +12,7 @@
 }
 *{box-sizing:border-box}
 html,body{margin:0;height:100%}
-body{background:var(--canvas);color:var(--ink);font:14px/1.6 "Segoe UI","Malgun Gothic","맑은 고딕","Apple SD Gothic Neo",system-ui,sans-serif;display:flex;flex-direction:column}
+body{background:var(--canvas);color:var(--ink);word-break:keep-all;overflow-wrap:anywhere;font:14px/1.6 "Segoe UI","Malgun Gothic","맑은 고딕","Apple SD Gothic Neo",system-ui,sans-serif;display:flex;flex-direction:column}
 button,input{font:inherit;color:inherit}
 .hidden{display:none!important}
 
@@ -49,7 +49,40 @@ button,input{font:inherit;color:inherit}
 /* 문서 영역 */
 .canvas{flex:1;overflow:auto;padding:24px 16px 40px}
 .page{background:var(--page);max-width:816px;margin:0 auto;min-height:calc(100% - 8px);padding:64px 72px;box-shadow:0 0 0 1px rgba(0,0,0,.06),0 2px 6px rgba(0,0,0,.08)}
-@media (max-width:700px){.page{padding:32px 22px}}
+th{white-space:nowrap}
+td.n{white-space:nowrap}
+
+/* ---------- 모바일 ---------- */
+@media (max-width:700px){
+  .page{padding:24px 16px}
+  h1{font-size:23px}
+  h2{font-size:17px;margin-top:22px}
+  .titlebar{padding:0 10px;gap:8px}
+  .titlebar .author input{width:96px}
+  .rtabs{padding:0 4px}
+  .rtabs button{padding:8px 10px 7px}
+  .rcmds{padding:4px 4px;min-height:0;row-gap:2px}
+  .grp{padding:0 6px}
+  .cmd{padding:5px 8px}
+  .status{gap:10px;padding:0 10px;font-size:11.5px}
+  .status .right{gap:10px}
+  table{font-size:13px}
+  th,td{padding:6px 7px}
+  .seg{flex-wrap:wrap}
+
+  /* 난이도 표 → 카드 */
+  .lvtable thead{display:none}
+  .lvtable,.lvtable tbody{display:block;border:0}
+  .lvtable tr{display:flex;flex-wrap:wrap;align-items:center;gap:4px 14px;
+    border:1px solid var(--line);border-radius:6px;padding:12px 14px;margin-bottom:10px}
+  .lvtable td{display:block;border:0;padding:0}
+  .lvtable .c-name{font-size:16px;flex:1;order:1}
+  .lvtable .c-go{order:2}
+  .lvtable .c-go .link{border:1px solid var(--brand);border-radius:4px;padding:4px 14px}
+  .lvtable .c-desc{order:3;flex-basis:100%;color:var(--sub);font-size:13px}
+  .lvtable .c-meta{order:4;font-size:12.5px;text-align:left}
+  .lvtable .c-meta::before{content:attr(data-label) " ";color:var(--sub)}
+}
 h1{font-size:26px;font-weight:600;margin:0 0 4px;color:#1b1b1b;letter-spacing:-.3px}
 h2{font-size:18px;font-weight:600;margin:28px 0 8px;color:var(--brand)}
 .meta{color:var(--sub);font-size:12.5px;margin:0 0 22px;padding-bottom:12px;border-bottom:1px solid var(--line2)}
@@ -184,12 +217,12 @@ tr.mine td{background:var(--brand-soft)}
   <div id="soloIdle">
     <h2>1. 컴퓨터와 대결</h2>
     <p>난이도를 고르면 컴퓨터가 첫 단어를 냅니다. 위쪽 <b>새 게임</b> 메뉴에서도 시작할 수 있어요.</p>
-    <table>
+    <table class="lvtable">
       <thead><tr><th>난이도</th><th>상대 특징</th><th>제한 시간</th><th>힌트</th><th class="n">내 전적</th><th></th></tr></thead>
       <tbody>
-        <tr><td><b>하수</b></td><td>쉬운 단어만 쓰고 가끔 먼저 포기함</td><td>없음</td><td>3회</td><td class="n" id="r-easy">-</td><td><button class="link" data-new="easy">시작</button></td></tr>
-        <tr><td><b>중수</b></td><td>까다로운 끝 글자를 자주 고름</td><td>20초</td><td>1회</td><td class="n" id="r-mid">-</td><td><button class="link" data-new="mid">시작</button></td></tr>
-        <tr><td><b>고수</b></td><td>사전 전체에서 이어 갈 단어가 가장 적은 단어로 공격</td><td>12초</td><td>없음</td><td class="n" id="r-hard">-</td><td><button class="link" data-new="hard">시작</button></td></tr>
+        <tr><td class="c-name"><b>하수</b></td><td class="c-desc">쉬운 단어만 쓰고 가끔 먼저 포기함</td><td class="c-meta" data-label="제한 시간">없음</td><td class="c-meta" data-label="힌트">3회</td><td class="n c-meta" data-label="내 전적" id="r-easy">-</td><td class="c-go"><button class="link" data-new="easy">시작</button></td></tr>
+        <tr><td class="c-name"><b>중수</b></td><td class="c-desc">까다로운 끝 글자를 자주 고름</td><td class="c-meta" data-label="제한 시간">20초</td><td class="c-meta" data-label="힌트">1회</td><td class="n c-meta" data-label="내 전적" id="r-mid">-</td><td class="c-go"><button class="link" data-new="mid">시작</button></td></tr>
+        <tr><td class="c-name"><b>고수</b></td><td class="c-desc">사전 전체에서 이어 갈 단어가 가장 적은 단어로 공격</td><td class="c-meta" data-label="제한 시간">12초</td><td class="c-meta" data-label="힌트">없음</td><td class="n c-meta" data-label="내 전적" id="r-hard">-</td><td class="c-go"><button class="link" data-new="hard">시작</button></td></tr>
       </tbody>
     </table>
     <p class="small muted">점수: 내 단어 1개당 하수 10 · 중수 20 · 고수 30점, 승리 보너스 하수 30 · 중수 100 · 고수 250점.</p>
@@ -320,6 +353,6 @@ tr.mine td{background:var(--brand-soft)}
   </div>
 </div>
 
-<script type="module" src="app.js?v=202611100817"></script>
+<script type="module" src="app.js?v=202611100819"></script>
 </body>
 </html>
