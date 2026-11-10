@@ -1,5 +1,5 @@
 rules_version = '2';
-// 버전: 2026-11-10 v6 (차단 목록)
+// 버전: 2026-11-10 v7 (1:1 조작 방지)
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -109,7 +109,8 @@ service cloud.firestore {
         && id == request.resource.data.code + '_' + string(request.resource.data.round) + '_' + me()
         && get(/databases/$(database)/documents/rooms/$(request.resource.data.code)).data.status == 'done'
         && get(/databases/$(database)/documents/rooms/$(request.resource.data.code)).data.winner == me()
-        && get(/databases/$(database)/documents/rooms/$(request.resource.data.code)).data.round == request.resource.data.round;
+        && get(/databases/$(database)/documents/rooms/$(request.resource.data.code)).data.round == request.resource.data.round
+        && get(/databases/$(database)/documents/rooms/$(request.resource.data.code)).data.words.size() >= 6;
     }
 
 
@@ -134,8 +135,51 @@ service cloud.firestore {
       return ws.size() == 0 || (ws[ws.size() - 1].w is string && ws[ws.size() - 1].w.size() <= 12);
     }
 
+    // 1:1 방의 상태 변화는 정해진 다섯 가지만 허용 (승패를 마음대로 바꿀 수 없음)
+    function member(o) { return o.host == me() || o.guest == me(); }
+    function sameGuest(n, o) { return n.guest == o.guest && n.guestNick == o.guestNick; }
+    function fixedOk(n, o) {
+      return n.keys().hasOnly(roomKeys())
+        && n.host == o.host && n.hostNick == o.hostNick && n.code == o.code && n.createdAt == o.createdAt
+        && n.words is list && n.words.size() <= 400 && lastWordOk(n.words);
+    }
+    // ① 참가: 빈자리에 내가 들어가며 시작
+    function joinOk(n, o) {
+      return o.guest == null && o.status == 'waiting' && n.guest == me() && o.host != me()
+        && n.guestNick is string && n.guestNick.size() <= 12
+        && n.status == 'playing' && n.words.size() == 1 && n.turn == o.host
+        && n.turnStart == request.time && n.winner == null && n.round == o.round;
+    }
+    // ② 단어 내기: 내 차례에만, 단어 하나 추가, 차례는 상대에게
+    function playOk(n, o) {
+      return sameGuest(n, o) && o.status == 'playing' && n.status == 'playing'
+        && o.turn == me() && n.words.size() == o.words.size() + 1 && n.words[n.words.size() - 1].by == me()
+        && (n.turn == o.host || n.turn == o.guest) && n.turn != me()
+        && n.turnStart == request.time && n.winner == null && n.round == o.round;
+    }
+    // ③ 포기·반칙패: 나 자신을 패배로만 처리할 수 있음
+    function resignOk(n, o) {
+      return sameGuest(n, o) && member(o) && o.status == 'playing' && n.status == 'done'
+        && (n.winner == o.host || n.winner == o.guest) && n.winner != me()
+        && n.words.size() == o.words.size() && n.round == o.round;
+    }
+    // ④ 시간 초과: 차례인 사람이 20초를 넘겼을 때만, 상대 승리
+    function timeoutOk(n, o) {
+      return sameGuest(n, o) && member(o) && o.status == 'playing' && n.status == 'done'
+        && (n.winner == o.host || n.winner == o.guest) && n.winner != o.turn
+        && request.time > o.turnStart + duration.value(20, 's')
+        && n.words.size() == o.words.size() && n.round == o.round;
+    }
+    // ⑤ 다시 하기
+    function rematchOk(n, o) {
+      return sameGuest(n, o) && member(o) && o.status == 'done' && n.status == 'playing'
+        && n.round == o.round + 1 && n.words.size() == 1
+        && (n.turn == o.host || n.turn == o.guest) && n.turnStart == request.time && n.winner == null;
+    }
+
     match /rooms/{code} {
-      allow read: if signedIn();
+      // 코드를 아는 방만 볼 수 있음 (방 목록 전체 조회는 막음)
+      allow get: if signedIn();
 
       allow create: if signedIn()
         && request.resource.data.keys().hasOnly(roomKeys())
@@ -149,30 +193,12 @@ service cloud.firestore {
         && getAfter(/databases/$(database)/documents/limits/$(me())).data.lastRoomAt == request.time;
 
       allow update: if signedIn()
-        && (resource.data.host == me() || resource.data.guest == me() || resource.data.guest == null)
-        && request.resource.data.keys().hasOnly(roomKeys())
-        && request.resource.data.host == resource.data.host
-        && request.resource.data.code == resource.data.code
-        && request.resource.data.createdAt == resource.data.createdAt
-        && request.resource.data.status in ['waiting', 'playing', 'done']
-        && request.resource.data.words is list
-        && request.resource.data.words.size() <= 400
-        && (request.resource.data.words.size() == resource.data.words.size()
-            || request.resource.data.words.size() == resource.data.words.size() + 1
-            || request.resource.data.words.size() == 1)
-        && lastWordOk(request.resource.data.words)
-        && ((resource.data.guest == null
-             && request.resource.data.guest == me()
-             && request.resource.data.guestNick is string && request.resource.data.guestNick.size() <= 12)
-            || (resource.data.guest != null
-             && request.resource.data.guest == resource.data.guest
-             && request.resource.data.guestNick == resource.data.guestNick))
-        && (request.resource.data.winner == null
-            || request.resource.data.winner == request.resource.data.host
-            || request.resource.data.winner == request.resource.data.guest)
-        && (request.resource.data.turn == null
-            || request.resource.data.turn == request.resource.data.host
-            || request.resource.data.turn == request.resource.data.guest);
+        && fixedOk(request.resource.data, resource.data)
+        && (joinOk(request.resource.data, resource.data)
+            || playOk(request.resource.data, resource.data)
+            || resignOk(request.resource.data, resource.data)
+            || timeoutOk(request.resource.data, resource.data)
+            || rematchOk(request.resource.data, resource.data));
 
       allow delete: if false;
     }

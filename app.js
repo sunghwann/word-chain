@@ -1,7 +1,7 @@
-import { firebaseConfig, appCheckSiteKey } from './firebase-config.js?v=202611100922';
+import { firebaseConfig, appCheckSiteKey } from './firebase-config.js?v=202611100956';
 
 // 배포할 때마다 바꾸는 버전. version.json과 같아야 함
-const APP_VERSION = '202611100922';
+const APP_VERSION = '202611100956';
 
 const $ = id => document.getElementById(id);
 const FB_VER = '10.14.1';
@@ -593,6 +593,8 @@ function saveNick() {
 
 /* ---------- 1:1 대결 ---------- */
 const PVP_LIMIT = 20;
+// 차례 시작 시각은 서버 시각(Timestamp)으로 저장 → 밀리초로
+const tsMs = t => t && typeof t.toMillis === 'function' ? t.toMillis() : (typeof t === 'number' ? t : 0);
 let room = null, roomRef = null, unsubRoom = null, pTick = 0, timeoutSent = 0;
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const newCode = () => Array.from({ length: 5 }, () => pick(CODE_CHARS)).join('');
@@ -629,7 +631,7 @@ async function joinRoom(code) {
       const r = s.data();
       if (r.host === uid || r.guest === uid) return;
       if (r.guest) throw new Error('이미 두 명이 들어간 방이에요.');
-      t.update(ref, { guest: uid, guestNick: myNick() || '참가자', status: 'playing', words: [{ w: startWord(), by: 'sys' }], turn: r.host, turnStart: Date.now(), pending: null, acc: {} });
+      t.update(ref, { guest: uid, guestNick: myNick() || '참가자', status: 'playing', words: [{ w: startWord(), by: 'sys' }], turn: r.host, turnStart: F.serverTimestamp(), pending: null, acc: {} });
     });
     openRoom(code);
   } catch (e) { noteBox($('lobbyNote'), 'err', esc(e.message || '참가하지 못했어요.')); }
@@ -641,7 +643,7 @@ function openRoom(code) {
   const link = location.origin + location.pathname + '#' + code;
   $('roomCode').textContent = code; $('roomLink').value = link;
   try { history.replaceState(null, '', '#' + code); } catch (e) { }
-  unsubRoom = F.onSnapshot(roomRef, s => { if (s.exists()) renderRoom(s.data()); });
+  unsubRoom = F.onSnapshot(roomRef, s => { if (s.exists()) renderRoom(s.data({ serverTimestamps: 'estimate' })); });
   clearInterval(pTick); pTick = setInterval(pvpClock, 250);
 }
 function leaveRoom() {
@@ -702,17 +704,18 @@ function renderRoom(r) {
 }
 function pvpClock() {
   const r = room; if (!r || r.status !== 'playing') return;
-  const ms = r.turnStart + PVP_LIMIT * 1000 - Date.now(), left = Math.ceil(ms / 1000);
+  const ts = tsMs(r.turnStart); if (!ts) return;
+  const ms = ts + PVP_LIMIT * 1000 - Date.now(), left = Math.ceil(ms / 1000);
   timeBar($('pInp'), ms / (PVP_LIMIT * 1000), left <= 5);
   $('pTime').textContent = `${r.turn === uid ? '내 차례' : nameOf(r, r.turn) + ' 차례'} · ${Math.max(0, left)}초`; $('pTime').classList.toggle('low', left <= 5);
   status(null, null, `${r.turn === uid ? '내 차례' : nameOf(r, r.turn) + ' 차례'} · 남은 시간 ${Math.max(0, left)}초`);
-  if (left <= -1 && timeoutSent !== r.turnStart) { timeoutSent = r.turnStart; finishTimeout(r.turnStart); }
+  if (left <= -2 && timeoutSent !== ts) { timeoutSent = ts; finishTimeout(ts); }
 }
 async function finishTimeout(ts) {
   try {
     await F.runTransaction(db, async t => {
       const s = await t.get(roomRef); const r = s.data();
-      if (r.status !== 'playing' || r.turnStart !== ts) return;
+      if (r.status !== 'playing' || Math.abs(tsMs(r.turnStart) - ts) > 2000) return;
       t.update(roomRef, { status: 'done', winner: r.turn === r.host ? r.guest : r.host, reason: 'timeout', pending: null });
     });
   } catch (e) { console.error(e); }
@@ -731,7 +734,7 @@ async function pvpSubmit() {
       const s = await t.get(roomRef); const x = s.data();
       if (x.status !== 'playing' || x.turn !== uid) throw new Error('차례가 아니에요.');
       const u = new Set(x.words.map(y => y.w)); if (u.has(w)) throw new Error('이미 나온 단어예요.');
-      t.update(roomRef, { words: [...x.words, { w, by: uid }], turn: other(x), turnStart: Date.now(), pending: null });
+      t.update(roomRef, { words: [...x.words, { w, by: uid }], turn: other(x), turnStart: F.serverTimestamp(), pending: null });
     });
     $('pInp').value = ''; resetTyped('pInp'); noteBox($('pNote'));
   } catch (e) { noteBox($('pNote'), 'err', esc(e.message || '보내지 못했어요.')); $('pInp').disabled = false; }
@@ -751,7 +754,7 @@ async function rematch() {
     await F.runTransaction(db, async t => {
       const s = await t.get(roomRef); const x = s.data(); if (x.status !== 'done') return;
       const loser = x.winner === x.host ? x.guest : x.host;
-      t.update(roomRef, { status: 'playing', round: (x.round || 1) + 1, words: [{ w: startWord(), by: 'sys' }], turn: loser, turnStart: Date.now(), pending: null, winner: null, reason: '', acc: {} });
+      t.update(roomRef, { status: 'playing', round: (x.round || 1) + 1, words: [{ w: startWord(), by: 'sys' }], turn: loser, turnStart: F.serverTimestamp(), pending: null, winner: null, reason: '', acc: {} });
     });
   } catch (e) { console.error(e); }
 }
