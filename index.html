@@ -348,6 +348,7 @@ tr.mine td{background:var(--brand-soft)}
     <h3 id="dlgTitle"></h3>
     <p id="dlgDesc"></p>
     <p id="dlgStat" class="small"></p>
+    <div id="dlgTip" class="note ok hidden" style="margin:12px 0 0"></div>
     <div class="acts">
       <button class="btn" id="dlgClose">닫기</button>
       <button class="btn primary" id="dlgAgain">한 판 더</button>
@@ -365,7 +366,7 @@ tr.mine td{background:var(--brand-soft)}
     document.body.innerHTML = '<div style="padding:48px 24px;font:16px/1.6 system-ui,sans-serif;color:#242424"><h1 style="font-size:22px">접속할 수 없습니다</h1><p>자동화 도구나 AI 에이전트로는 이 게임을 할 수 없어요.</p></div>';
     return;
   }
-  var s = document.createElement('script'); s.type = 'module'; s.src = 'app.js?v=202611100900';
+  var s = document.createElement('script'); s.type = 'module'; s.src = 'app.js?v=202611100904';
   document.body.appendChild(s);
 })();
 </script>

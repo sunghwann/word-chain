@@ -1,7 +1,7 @@
-import { firebaseConfig, appCheckSiteKey } from './firebase-config.js?v=202611100900';
+import { firebaseConfig, appCheckSiteKey } from './firebase-config.js?v=202611100904';
 
 // 배포할 때마다 바꾸는 버전. version.json과 같아야 함
-const APP_VERSION = '202611100900';
+const APP_VERSION = '202611100904';
 
 const $ = id => document.getElementById(id);
 const FB_VER = '10.14.1';
@@ -124,8 +124,24 @@ function nextInfo(el, last) {
   const d = dueum(last);
   el.innerHTML = `다음 글자 <b>${esc(last)}</b>${d ? ` 또는 <b>${esc(d)}</b>` : ''}`;
 }
-function dialog(title, desc, stat, againLabel, onAgain) {
+// 졌을 때 '이런 단어를 낼 수 있었어요' (흔한 말 → 사전 명사 → 동사 → 방언 순으로 최대 5개)
+function couldPlay(last, used) {
+  if (!last || !FULL) return null;
+  const out = [], seen = new Set(), add = w => { if (out.length < 5 && !used.has(w) && !seen.has(w)) { seen.add(w); out.push(w); } };
+  const ss = starts(last);
+  for (const map of [CBY, BY, XBY]) for (const s0 of ss) for (const w of (map[s0] || []).slice().sort(() => Math.random() - .5)) add(w);
+  if (out.length < 5) for (const w of VERBS) if (ss.includes(w[0])) add(w);
+  return out;
+}
+function tipHtml(last, used) {
+  const ws = couldPlay(last, used);
+  if (!ws) return '';
+  if (!ws.length) return `“${esc(last)}”(으)로 이어 갈 단어는 사전에 하나도 없었어요. 한방 단어에 당했네요!`;
+  return `이런 단어를 낼 수 있었어요: ` + ws.map(w => `<a href="${dictUrl(w)}" target="_blank" rel="noopener"><b>${esc(w)}</b></a>`).join(', ');
+}
+function dialog(title, desc, stat, againLabel, onAgain, tip) {
   $('dlgTitle').textContent = title; $('dlgDesc').textContent = desc; $('dlgStat').textContent = stat || '';
+  $('dlgTip').innerHTML = tip || ''; $('dlgTip').classList.toggle('hidden', !tip);
   $('dlgAgain').textContent = againLabel || '한 판 더';
   $('dlgAgain').classList.toggle('hidden', !onAgain);
   $('dlgAgain').onclick = () => { closeDlg(); onAgain && onAgain(); };
@@ -318,7 +334,7 @@ function soloEnd(win, why) {
   const me = myRank('sum'), meB = myRank('best');
   setTimeout(() => dialog(win ? '승리했습니다' : '패배했습니다', why,
     `단어 ${S.turn}개 · 이번 판 ${S.score.toLocaleString()}점${best ? ' · 개인 최고 기록' : ''} · ${LV[S.level].name} 전적 ${x.w}승 ${x.l}패${me ? ` · 누적 ${me.pos}위 · 최고 ${meB ? meB.pos : '-'}위` : ''}`,
-    '한 판 더', () => soloStart(S.level)), 500);
+    '한 판 더', () => soloStart(S.level), win ? '' : tipHtml(S.last, S.used)), 500);
 }
 function soloQuit() { if (!S.over && !S.busy) soloEnd(false, `“${S.last}”에서 포기했어요.`); }
 
@@ -621,7 +637,9 @@ function renderRoom(r) {
       const loserName = nameOf(r, r.winner === r.host ? r.guest : r.host);
       const why = r.reason === 'timeout' ? `${loserName}의 시간 초과` : r.reason === 'away' ? `${loserName}이(가) 차례 중에 다른 창으로 나가 반칙패` : `${loserName}의 포기`;
       status(null, null, '');
-      dialog(win ? '승리했습니다' : '패배했습니다', why, `단어 ${r.words.length}개 이어짐`, '다시 하기', rematch);
+      const lastW = r.words[r.words.length - 1].w;
+      dialog(win ? '승리했습니다' : '패배했습니다', why, `단어 ${r.words.length}개 이어짐`, '다시 하기', rematch,
+        win ? '' : tipHtml(endOf(lastW), new Set(r.words.map(y => y.w))));
     }
   }
 }
