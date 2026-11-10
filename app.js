@@ -1,7 +1,7 @@
-import { firebaseConfig, appCheckSiteKey } from './firebase-config.js?v=202611100819';
+import { firebaseConfig, appCheckSiteKey } from './firebase-config.js?v=202611100836';
 
 // 배포할 때마다 바꾸는 버전. version.json과 같아야 함
-const APP_VERSION = '202611100819';
+const APP_VERSION = '202611100836';
 
 const $ = id => document.getElementById(id);
 const FB_VER = '10.14.1';
@@ -60,12 +60,13 @@ function startWord() {
   return pick(COMMON.filter(w => w.length <= 3 && rem(endOf(w)) >= 80));
 }
 // 입력 검사: 오류 문구 또는 null(통과)
-function check(w, last, used) {
+function check(w, last, used, allowExtra = true) {
   if (!w) return '단어를 입력해 주세요.';
   if (!/^[가-힣]+$/.test(w)) return '완성된 한글로만 입력해 주세요.';
   if (w.length < 2) return '두 글자 이상이어야 해요.';
   if (last && !starts(last).includes(w[0])) return `“${starts(last).join('” 또는 “')}”(으)로 시작해야 해요.`;
   if (used.has(w)) return '이미 나온 단어예요.';
+  if (EXTRA.has(w) && !FULL.has(w) && !VERBS.has(w) && !allowExtra) return `“${w}”은(는) 방언·옛말·북한어라 고수에서만 쓸 수 있어요.`;
   if (!FULL.has(w) && !VERBS.has(w) && !EXTRA.has(w)) return `“${w}”은(는) 사전에 없는 단어예요.`;
   return null;
 }
@@ -245,7 +246,7 @@ function aiTurn() {
 function soloSubmit() {
   if (S.busy || S.over) return;
   const w = $('inp').value.trim().replace(/\s/g, '');
-  const r = check(w, S.last, S.used);
+  const r = check(w, S.last, S.used, S.level === 'hard'); // 비표준어는 고수에서만
   if (r) { noteBox($('note'), 'err', esc(r)); $('inp').select(); return; }
   soloCommit(w);
 }
