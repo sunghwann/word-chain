@@ -1,4 +1,5 @@
 rules_version = '2';
+// 버전: 2026-11-10 v3 (누적 점수)
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -41,7 +42,7 @@ service cloud.firestore {
     // 1) 닉네임만 바꿈 (5초에 한 번)
     function nickOnly(n, o) {
       return soloGames(n) == soloGames(o) && samePvp(n, o) && sameBests(n, o)
-        && (o.get('updatedAt', null) == null || request.time > o.updatedAt + duration.value(5, 's'));
+        && (!(o.get('updatedAt', null) is timestamp) || request.time > o.updatedAt + duration.value(5, 's'));
     }
 
     // 2) 컴퓨터 대결 한 판: 시작할 때 만든 세션을 이번 쓰기에서 지워야 하고,
