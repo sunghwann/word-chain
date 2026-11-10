@@ -1,7 +1,7 @@
-import { firebaseConfig, appCheckSiteKey } from './firebase-config.js?v=202611100812';
+import { firebaseConfig, appCheckSiteKey } from './firebase-config.js?v=202611100817';
 
 // 배포할 때마다 바꾸는 버전. version.json과 같아야 함
-const APP_VERSION = '202611100812';
+const APP_VERSION = '202611100817';
 
 const $ = id => document.getElementById(id);
 const FB_VER = '10.14.1';
@@ -269,9 +269,9 @@ function soloEnd(win, why) {
   const r = store.get('kk-rec', {}); const x = r[S.level] || { w: 0, l: 0 }; win ? x.w++ : x.l++; r[S.level] = x; store.set('kk-rec', r); showRec();
   const best = recordSolo(win);
   status(S.turn, `${LV[S.level].name} 대결 종료 · ${S.score}점`, '');
-  const me = myRank();
+  const me = myRank('sum'), meB = myRank('best');
   setTimeout(() => dialog(win ? '승리했습니다' : '패배했습니다', why,
-    `단어 ${S.turn}개 · 이번 판 ${S.score.toLocaleString()}점${best ? ' · 개인 최고 기록' : ''} · ${LV[S.level].name} 전적 ${x.w}승 ${x.l}패${me ? ` · 종합 ${me.pos}위` : ''}`,
+    `단어 ${S.turn}개 · 이번 판 ${S.score.toLocaleString()}점${best ? ' · 개인 최고 기록' : ''} · ${LV[S.level].name} 전적 ${x.w}승 ${x.l}패${me ? ` · 누적 ${me.pos}위 · 최고 ${meB ? meB.pos : '-'}위` : ''}`,
     '한 판 더', () => soloStart(S.level)), 500);
 }
 function soloQuit() { if (!S.over && !S.busy) soloEnd(false, `“${S.last}”에서 포기했어요.`); }
@@ -335,49 +335,66 @@ function startRanking() {
     renderBoard();
   }, () => { $('rankMeta').textContent = '랭킹을 불러오지 못했어요. Firestore 규칙을 확인해 주세요.'; });
 }
-function rankRows(k, rows) {
+const LVN = { easy: '하수', mid: '중수', hard: '고수' };
+let rankMode = 'sum'; // 'sum' 누적 점수 | 'best' 최고 점수
+function bestOf(r) { // 종합 최고 점수: 세 난이도 중 가장 높은 한 판
+  let v = 0, lv = '';
+  for (const x of ['easy', 'mid', 'hard']) { const b = +((r[x] || {}).best) || 0; if (b > v) { v = b; lv = x; } }
+  return { v, lv };
+}
+function rankRows(k, rows, mode = rankMode) {
   const num = v => +v || 0;
   const lv = (r, x) => r[x] || {};
   const games = r => k === 'total' ? ['easy', 'mid', 'hard'].reduce((n, x) => n + num(lv(r, x).w) + num(lv(r, x).l), 0)
     : num(lv(r, k).w) + num(lv(r, k).l);
-  const val = r => k === 'total' ? num(r.total) : k === 'pvp' ? num(lv(r, 'pvp').w) : num(lv(r, k).sum);
+  const val = r => k === 'pvp' ? num(lv(r, 'pvp').w)
+    : mode === 'best' ? (k === 'total' ? bestOf(r).v : num(lv(r, k).best))
+    : (k === 'total' ? num(r.total) : num(lv(r, k).sum));
   const ms = t => (t && typeof t.toMillis === 'function') ? t.toMillis() : 0;
   return rows.filter(r => games(r) > 0)
     .sort((a, b) => val(b) - val(a) || games(b) - games(a) || ms(a.updatedAt) - ms(b.updatedAt))
     .map(r => ({ r, val: val(r), games: games(r) }));
 }
-function myRank() {
+function myRank(mode = 'sum') {
   if (!MINE) return null;
   const rows = ROWS.filter(r => r.id !== uid).concat([MINE]);
-  const list = rankRows('total', rows); const i = list.findIndex(x => x.r.id === uid);
+  const list = rankRows('total', rows, mode); const i = list.findIndex(x => x.r.id === uid);
   return i < 0 ? null : { pos: i + 1, of: list.length };
 }
 function renderBoard() {
   if (!online || !db) return;
-  const k = rankKey, num = v => +v || 0;
+  const k = rankKey, m = rankMode, num = v => +v || 0;
+  $('modeSeg').classList.toggle('hidden', k === 'pvp');
   const list = rankRows(k, ROWS).slice(0, 100);
   const board = $('board');
   if (!list.length) { board.innerHTML = '<p class="muted">아직 기록이 없습니다. 한 판 하면 바로 올라가요.</p>'; return; }
-  const head = k === 'pvp' ? ['순위', '이름', '승', '전적']
-    : k === 'total' ? ['순위', '이름', '누적 점수', '판 수']
-    : ['순위', '이름', '누적 점수', '최고 점수', '전적'];
+  let head;
+  if (k === 'pvp') head = ['순위', '이름', '승', '전적'];
+  else if (m === 'sum') head = k === 'total' ? ['순위', '이름', '누적 점수', '판 수'] : ['순위', '이름', '누적 점수', '최고 점수', '전적'];
+  else head = k === 'total' ? ['순위', '이름', '최고 점수', '난이도', '판 수'] : ['순위', '이름', '최고 점수', '누적 점수', '전적'];
   const t = document.createElement('table');
   t.innerHTML = `<thead><tr>${head.map((h, i) => `<th class="${i >= 2 ? 'n' : ''}"${i === 0 ? ' style="width:56px"' : ''}>${h}</th>`).join('')}</tr></thead>`;
   const tb = document.createElement('tbody');
   list.forEach(({ r, val, games }, i) => {
     const tr = document.createElement('tr'); if (r.id === uid) tr.className = 'mine';
     const x = r[k] || {};
-    const cells = k === 'pvp' ? [i + 1, null, val.toLocaleString(), `${num(x.w)}승 ${num(x.l)}패`]
-      : k === 'total' ? [i + 1, null, val.toLocaleString(), `${games}판`]
-      : [i + 1, null, val.toLocaleString(), num(x.best).toLocaleString(), `${num(x.w)}승 ${num(x.l)}패`];
+    let cells;
+    if (k === 'pvp') cells = [i + 1, '', val.toLocaleString(), `${num(x.w)}승 ${num(x.l)}패`];
+    else if (m === 'sum') cells = k === 'total' ? [i + 1, '', val.toLocaleString(), `${games}판`]
+      : [i + 1, '', val.toLocaleString(), num(x.best).toLocaleString(), `${num(x.w)}승 ${num(x.l)}패`];
+    else cells = k === 'total' ? [i + 1, '', val.toLocaleString(), LVN[bestOf(r).lv] || '-', `${games}판`]
+      : [i + 1, '', val.toLocaleString(), num(x.sum).toLocaleString(), `${num(x.w)}승 ${num(x.l)}패`];
     cells[1] = String(r.nick || '').slice(0, 12) || '이름 없음';
     cells.forEach((c, j) => { const td = document.createElement('td'); td.textContent = String(c); if (j >= 2) td.className = 'n'; tr.appendChild(td); });
     tb.appendChild(tr);
   });
   t.appendChild(tb); board.replaceChildren(t);
-  const me = myRank();
-  $('rankMeta').textContent = '게임할 때마다 점수가 쌓이고 실시간으로 갱신됩니다.' + (me ? ` 내 종합 순위: ${me.pos}위 / ${me.of}명` : '');
+  const a = myRank('sum'), b2 = myRank('best');
+  $('rankMeta').textContent = '게임할 때마다 실시간으로 갱신됩니다.' + (a ? ` 내 종합 순위: 누적 ${a.pos}위 · 최고 ${b2 ? b2.pos : '-'}위 (${a.of}명 중)` : '');
 }
+document.querySelectorAll('#modeSeg button').forEach(b => b.onclick = () => {
+  rankMode = b.dataset.m; document.querySelectorAll('#modeSeg button').forEach(x => x.setAttribute('aria-pressed', x === b)); renderBoard();
+});
 document.querySelectorAll('#rankSeg button').forEach(b => b.onclick = () => {
   rankKey = b.dataset.k; document.querySelectorAll('#rankSeg button').forEach(x => x.setAttribute('aria-pressed', x === b)); renderBoard();
 });

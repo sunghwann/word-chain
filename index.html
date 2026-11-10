@@ -254,7 +254,11 @@ tr.mine td{background:var(--brand-soft)}
 <section id="v-rank" class="hidden">
   <h1>랭킹</h1>
   <p class="meta" id="rankMeta">불러오는 중…</p>
-  <div class="seg" id="rankSeg" role="group" aria-label="랭킹 기준">
+  <div class="seg" id="modeSeg" role="group" aria-label="점수 기준" style="margin-right:10px">
+    <button data-m="sum" aria-pressed="true">누적 점수</button>
+    <button data-m="best" aria-pressed="false">최고 점수</button>
+  </div>
+  <div class="seg" id="rankSeg" role="group" aria-label="난이도">
     <button data-k="total" aria-pressed="true">종합</button>
     <button data-k="easy" aria-pressed="false">하수</button>
     <button data-k="mid" aria-pressed="false">중수</button>
@@ -279,7 +283,7 @@ tr.mine td{background:var(--brand-soft)}
   <h2>5. 승패</h2>
   <p>컴퓨터가 단어를 못 찾으면 승리, 제한 시간 초과나 포기는 패배입니다. 1:1 대결도 같습니다.</p>
   <h2>6. 점수</h2>
-  <p>내 단어 1개당 하수 10 · 중수 20 · 고수 30점, 승리 보너스 하수 30 · 중수 100 · 고수 250점. 랭킹은 게임할 때마다 점수가 쌓이는 <b>누적 점수</b>로 매기며, 한 판 최고 점수도 함께 보여 줍니다. 1:1은 승수로 순위를 매깁니다.</p>
+  <p>내 단어 1개당 하수 10 · 중수 20 · 고수 30점, 승리 보너스 하수 30 · 중수 100 · 고수 250점. 랭킹은 두 가지입니다. <b>누적 점수</b>는 게임할 때마다 점수가 쌓이는 순위, <b>최고 점수</b>는 한 판에서 낸 가장 높은 점수 순위입니다. 종합 최고 점수는 세 난이도 중 가장 높은 한 판으로 매깁니다. 1:1은 승수로 순위를 매깁니다.</p>
 </section>
 
 </article>
@@ -316,6 +320,6 @@ tr.mine td{background:var(--brand-soft)}
   </div>
 </div>
 
-<script type="module" src="app.js?v=202611100812"></script>
+<script type="module" src="app.js?v=202611100817"></script>
 </body>
 </html>
