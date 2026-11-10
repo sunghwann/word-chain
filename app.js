@@ -49,14 +49,14 @@ function startWord() {
   const rem = remainingFn(new Set());
   return pick(COMMON.filter(w => w.length <= 3 && rem(endOf(w)) >= 80));
 }
-// 입력 검사: 오류 문구 또는 null(통과) 또는 'unknown'(사전에 없음)
+// 입력 검사: 오류 문구 또는 null(통과)
 function check(w, last, used) {
   if (!w) return '단어를 입력해 주세요.';
   if (!/^[가-힣]+$/.test(w)) return '완성된 한글로만 입력해 주세요.';
   if (w.length < 2) return '두 글자 이상이어야 해요.';
   if (last && !starts(last).includes(w[0])) return `“${starts(last).join('” 또는 “')}”(으)로 시작해야 해요.`;
   if (used.has(w)) return '이미 나온 단어예요.';
-  if (!FULL.has(w)) return w.endsWith('다') ? '‘-다’로 끝나는 동사·형용사는 쓸 수 없어요.' : 'unknown';
+  if (!FULL.has(w)) return `“${w}”은(는) 사전에 없는 단어예요.`;
   return null;
 }
 
@@ -68,7 +68,6 @@ const LV = {
   mid: { name: '중수', time: 20, hints: 1, pt: 20, bonus: 100 },
   hard: { name: '고수', time: 12, hints: 0, pt: 30, bonus: 250 }
 };
-const MAX_ACCEPT = 3;
 const store = {
   get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { } }
@@ -89,7 +88,6 @@ function chainItem(w, who, opts = {}) {
   a.title = '표준국어대사전에서 찾기';
   a.innerHTML = esc(w.slice(0, -1)) + '<b>' + esc(endOf(w)) + '</b>';
   li.appendChild(a);
-  if (opts.accepted) { const t = document.createElement('span'); t.className = 'tag'; t.textContent = '인정'; li.appendChild(t); }
   const by = document.createElement('span'); by.className = 'by'; by.textContent = who; li.appendChild(by);
   return li;
 }
@@ -127,6 +125,25 @@ nickEl.value = store.get('kk-nick', '');
 const myNick = () => nickEl.value.trim().slice(0, 12);
 nickEl.addEventListener('change', () => { store.set('kk-nick', myNick()); saveNick(); });
 
+// 닉네임이 없으면 먼저 입력받고 이어서 진행
+let nickThen = null;
+function needNick(then) {
+  if (myNick()) { then(); return; }
+  nickThen = then;
+  $('nickDlgInp').value = ''; $('nickDlgErr').textContent = '';
+  $('nickDlg').classList.remove('hidden'); setTimeout(() => $('nickDlgInp').focus(), 30);
+}
+function nickOk() {
+  const n = $('nickDlgInp').value.trim().slice(0, 12);
+  if (!n) { $('nickDlgErr').textContent = '닉네임을 한 글자 이상 입력해 주세요.'; return; }
+  nickEl.value = n; store.set('kk-nick', n); saveNick();
+  $('nickDlg').classList.add('hidden');
+  const t = nickThen; nickThen = null; t && t();
+}
+$('nickDlgOk').onclick = nickOk;
+$('nickDlgInp').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); nickOk(); } });
+$('nickDlgCancel').onclick = () => { nickThen = null; $('nickDlg').classList.add('hidden'); };
+
 function status(words, mode, timer) {
   if (words != null) $('sWords').textContent = `단어 ${words}개`;
   if (mode != null) $('sMode').textContent = mode;
@@ -136,7 +153,7 @@ function status(words, mode, timer) {
 /* =========================================================
    컴퓨터 대결
    ========================================================= */
-const S = { level: 'easy', used: new Set(), last: null, turn: 0, hints: 0, accepts: MAX_ACCEPT, score: 0, busy: false, over: true, pending: null, tEnd: 0, raf: 0 };
+const S = { level: 'easy', used: new Set(), last: null, turn: 0, hints: 0, score: 0, busy: false, over: true, pending: null, tEnd: 0, raf: 0 };
 
 function showRec() {
   const r = store.get('kk-rec', {});
@@ -148,10 +165,10 @@ function setSoloInput(on) {
   $('cHint').lastChild.textContent = LV[S.level].hints ? `힌트 (${S.hints})` : '힌트';
   if (on) $('inp').focus();
 }
-function soloPlay(w, who, accepted) {
+function soloPlay(w, who) {
   S.used.add(w); S.last = endOf(w); S.turn++;
-  if (who === 'me' && !accepted) S.score += LV[S.level].pt;
-  $('chain').appendChild(chainItem(w, who === 'me' ? (myNick() || '나') : '컴퓨터', { me: who === 'me', accepted }));
+  if (who === 'me') S.score += LV[S.level].pt;
+  $('chain').appendChild(chainItem(w, who === 'me' ? (myNick() || '나') : '컴퓨터', { me: who === 'me' }));
   $('entryNo').textContent = (S.turn + 1) + '.';
   nextInfo($('nextInfo'), S.last);
   status(S.turn, `${LV[S.level].name} 대결 · ${S.score}점`);
@@ -172,7 +189,7 @@ function soloTimer() {
 function soloStart(lv) {
   if (!FULL) return;
   closeDlg(); show('home');
-  Object.assign(S, { level: lv, used: new Set(), last: null, turn: 0, hints: LV[lv].hints, accepts: MAX_ACCEPT, score: 0, busy: false, over: false, pending: null });
+  Object.assign(S, { level: lv, used: new Set(), last: null, turn: 0, hints: LV[lv].hints, score: 0, busy: false, over: false, pending: null });
   startSession(lv);
   $('soloIdle').classList.add('hidden'); $('soloGame').classList.remove('hidden');
   $('gTitle').textContent = `${LV[lv].name}와(과) 대결`;
@@ -217,26 +234,19 @@ function soloSubmit() {
   if (S.busy || S.over) return;
   const w = $('inp').value.trim().replace(/\s/g, '');
   const r = check(w, S.last, S.used);
-  if (r === 'unknown') {
-    if (S.accepts <= 0) return noteBox($('note'), 'err', `“${esc(w)}”은(는) 사전에 없어요. 이번 판 인정 기회를 모두 썼어요.`);
-    S.pending = w;
-    return noteBox($('note'), '', `“<b>${esc(w)}</b>”은(는) 사전에 없는 단어예요. 사람 이름·브랜드 같은 고유명사라면 인정하고 낼 수 있어요. <span class="muted">(남은 인정 ${S.accepts}회 · 0점)</span>`,
-      [['인정하고 내기', () => soloCommit(w, true), true], ['다시 입력', () => { noteBox($('note')); $('inp').select(); }]]);
-  }
   if (r) { noteBox($('note'), 'err', esc(r)); $('inp').select(); return; }
-  soloCommit(w, false);
+  soloCommit(w);
 }
-function soloCommit(w, accepted) {
+function soloCommit(w) {
   if (S.busy || S.over) return;
-  if (accepted) { if (S.pending !== w || S.accepts <= 0) return; S.accepts--; }
-  S.pending = null; noteBox($('note')); $('inp').value = '';
-  soloPlay(w, 'me', accepted); aiTurn();
+  noteBox($('note')); $('inp').value = '';
+  soloPlay(w, 'me'); aiTurn();
 }
 function soloHint() {
   if (S.hints <= 0 || S.busy || S.over) return;
   const rem = remainingFn(S.used);
   let c = cands(CBY, S.last, S.used); if (!c.length) c = cands(BY, S.last, S.used);
-  if (!c.length) return noteBox($('note'), 'err', '이어 갈 단어가 사전에 없어요. 포기하거나 고유명사를 써 보세요.');
+  if (!c.length) return noteBox($('note'), 'err', '이어 갈 단어가 사전에 없어요. 포기할 수밖에 없겠네요.');
   const safe = c.filter(w => rem(endOf(w)) > 0); const w = pick(safe.length ? safe : c);
   S.hints--; setSoloInput(true);
   noteBox($('note'), 'ok', `힌트: <b>${esc(w)}</b>`);
@@ -247,15 +257,15 @@ function soloEnd(win, why) {
   const r = store.get('kk-rec', {}); const x = r[S.level] || { w: 0, l: 0 }; win ? x.w++ : x.l++; r[S.level] = x; store.set('kk-rec', r); showRec();
   const best = recordSolo(win);
   status(S.turn, `${LV[S.level].name} 대결 종료 · ${S.score}점`, '');
+  const me = myRank();
   setTimeout(() => dialog(win ? '승리했습니다' : '패배했습니다', why,
-    `단어 ${S.turn}개 · 이번 판 ${S.score.toLocaleString()}점${best ? ' · 개인 최고 기록' : ''} · ${LV[S.level].name} 전적 ${x.w}승 ${x.l}패`,
+    `단어 ${S.turn}개 · 이번 판 ${S.score.toLocaleString()}점${best ? ' · 개인 최고 기록' : ''} · ${LV[S.level].name} 전적 ${x.w}승 ${x.l}패${me ? ` · 종합 ${me.pos}위` : ''}`,
     '한 판 더', () => soloStart(S.level)), 500);
 }
 function soloQuit() { if (!S.over && !S.busy) soloEnd(false, `“${S.last}”에서 포기했어요.`); }
 
-document.querySelectorAll('[data-new]').forEach(b => { b.disabled = true; b.onclick = () => soloStart(b.dataset.new); });
+document.querySelectorAll('[data-new]').forEach(b => { b.disabled = true; b.onclick = () => needNick(() => soloStart(b.dataset.new)); });
 $('inp').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); soloSubmit(); } });
-$('inp').addEventListener('input', () => { if (S.pending && $('inp').value.trim() !== S.pending) { S.pending = null; noteBox($('note')); } });
 $('cHint').onclick = () => { if (view === 'home') soloHint(); };
 $('cGiveup').onclick = () => { if (view === 'home') soloQuit(); };
 
@@ -292,7 +302,8 @@ async function initFirebase() {
     $('pvpLobby').classList.remove('hidden');
     startRanking();
     const m = location.hash.match(/^#([A-Z0-9]{5})$/);
-    if (m) { show('pvp'); joinRoom(m[1]); }
+    if (m) { show('pvp'); needNick(() => joinRoom(m[1])); }
+    if (!S.over && !S.session) startSession(S.level); // 접속 전에 시작한 판도 기록되게
   } catch (e) {
     console.error(e);
     $('sNet').textContent = '연결 실패';
@@ -309,35 +320,51 @@ function startRanking() {
     ROWS = snap.docs.map(d => Object.assign({ id: d.id }, d.data()));
     MINE = ROWS.find(r => r.id === uid) || null;
     if (MINE && MINE.nick && !myNick()) { nickEl.value = MINE.nick; store.set('kk-nick', MINE.nick); }
-    if (view === 'rank') renderBoard();
+    renderBoard();
   }, () => { $('rankMeta').textContent = '랭킹을 불러오지 못했어요. Firestore 규칙을 확인해 주세요.'; });
+}
+function rankRows(k, rows) {
+  const num = v => +v || 0;
+  const lv = (r, x) => r[x] || {};
+  const games = r => k === 'total' ? ['easy', 'mid', 'hard'].reduce((n, x) => n + num(lv(r, x).w) + num(lv(r, x).l), 0)
+    : num(lv(r, k).w) + num(lv(r, k).l);
+  const val = r => k === 'total' ? num(r.total) : k === 'pvp' ? num(lv(r, 'pvp').w) : num(lv(r, k).sum);
+  const ms = t => (t && typeof t.toMillis === 'function') ? t.toMillis() : 0;
+  return rows.filter(r => games(r) > 0)
+    .sort((a, b) => val(b) - val(a) || games(b) - games(a) || ms(a.updatedAt) - ms(b.updatedAt))
+    .map(r => ({ r, val: val(r), games: games(r) }));
+}
+function myRank() {
+  if (!MINE) return null;
+  const rows = ROWS.filter(r => r.id !== uid).concat([MINE]);
+  const list = rankRows('total', rows); const i = list.findIndex(x => x.r.id === uid);
+  return i < 0 ? null : { pos: i + 1, of: list.length };
 }
 function renderBoard() {
   if (!online || !db) return;
-  const k = rankKey;
-  const num = v => +v || 0;
-  const val = r => k === 'total' ? num(r.total) : k === 'pvp' ? num((r.pvp || {}).w) : num((r[k] || {}).best);
-  const wl = r => {
-    const ks = k === 'total' ? ['easy', 'mid', 'hard'] : [k];
-    let w = 0, l = 0; for (const x of ks) { w += num((r[x] || {}).w); l += num((r[x] || {}).l); }
-    return `${w}승 ${l}패`;
-  };
-  const ms = t => (t && typeof t.toMillis === 'function') ? t.toMillis() : 0;
-  const rows = ROWS.filter(r => val(r) > 0).sort((a, b) => val(b) - val(a) || ms(a.updatedAt) - ms(b.updatedAt)).slice(0, 50);
+  const k = rankKey, num = v => +v || 0;
+  const list = rankRows(k, ROWS).slice(0, 100);
   const board = $('board');
-  if (!rows.length) { board.innerHTML = '<p class="muted">아직 기록이 없습니다.</p>'; return; }
-  const head = k === 'pvp' ? ['순위', '이름', '승', '전적'] : ['순위', '이름', k === 'total' ? '종합 점수' : '최고 점수', '전적'];
+  if (!list.length) { board.innerHTML = '<p class="muted">아직 기록이 없습니다. 한 판 하면 바로 올라가요.</p>'; return; }
+  const head = k === 'pvp' ? ['순위', '이름', '승', '전적']
+    : k === 'total' ? ['순위', '이름', '누적 점수', '판 수']
+    : ['순위', '이름', '누적 점수', '최고 점수', '전적'];
   const t = document.createElement('table');
   t.innerHTML = `<thead><tr>${head.map((h, i) => `<th class="${i >= 2 ? 'n' : ''}"${i === 0 ? ' style="width:56px"' : ''}>${h}</th>`).join('')}</tr></thead>`;
   const tb = document.createElement('tbody');
-  rows.forEach((r, i) => {
+  list.forEach(({ r, val, games }, i) => {
     const tr = document.createElement('tr'); if (r.id === uid) tr.className = 'mine';
-    [String(i + 1), String(r.nick || '').slice(0, 12) || '이름 없음', val(r).toLocaleString(), wl(r)].forEach((c, j) => {
-      const td = document.createElement('td'); td.textContent = c; if (j >= 2) td.className = 'n'; tr.appendChild(td);
-    });
+    const x = r[k] || {};
+    const cells = k === 'pvp' ? [i + 1, null, val.toLocaleString(), `${num(x.w)}승 ${num(x.l)}패`]
+      : k === 'total' ? [i + 1, null, val.toLocaleString(), `${games}판`]
+      : [i + 1, null, val.toLocaleString(), num(x.best).toLocaleString(), `${num(x.w)}승 ${num(x.l)}패`];
+    cells[1] = String(r.nick || '').slice(0, 12) || '이름 없음';
+    cells.forEach((c, j) => { const td = document.createElement('td'); td.textContent = String(c); if (j >= 2) td.className = 'n'; tr.appendChild(td); });
     tb.appendChild(tr);
   });
   t.appendChild(tb); board.replaceChildren(t);
+  const me = myRank();
+  $('rankMeta').textContent = '게임할 때마다 점수가 쌓이고 실시간으로 갱신됩니다.' + (me ? ` 내 종합 순위: ${me.pos}위 / ${me.of}명` : '');
 }
 document.querySelectorAll('#rankSeg button').forEach(b => b.onclick = () => {
   rankKey = b.dataset.k; document.querySelectorAll('#rankSeg button').forEach(x => x.setAttribute('aria-pressed', x === b)); renderBoard();
@@ -351,12 +378,12 @@ const sessionRef = () => F.doc(db, 'sessions', uid);
 function myBody() {
   const src = MINE || {};
   const b = { nick: myNick() || src.nick || '' };
-  for (const k of ['easy', 'mid', 'hard']) if (src[k]) b[k] = { best: +src[k].best || 0, w: +src[k].w || 0, l: +src[k].l || 0 };
+  for (const k of ['easy', 'mid', 'hard']) if (src[k]) b[k] = { best: +src[k].best || 0, sum: +src[k].sum || 0, w: +src[k].w || 0, l: +src[k].l || 0 };
   if (src.pvp) b.pvp = { w: +src.pvp.w || 0, l: +src.pvp.l || 0 };
   return b;
 }
 function finish(b) {
-  b.total = ['easy', 'mid', 'hard'].reduce((n, k) => n + ((b[k] || {}).best || 0), 0);
+  b.total = ['easy', 'mid', 'hard'].reduce((n, k) => n + ((b[k] || {}).sum || 0), 0); // 누적 점수
   b.updatedAt = F.serverTimestamp(); lastWriteAt = Date.now();
   MINE = Object.assign({ id: uid }, b, { updatedAt: null });
   return b;
@@ -365,7 +392,12 @@ function queue(fn) {
   $('savedState').textContent = '· 저장 중…';
   writeChain = writeChain.then(fn)
     .then(() => { $('savedState').textContent = '· 저장됨'; })
-    .catch(e => { console.error(e); $('savedState').textContent = '· 저장 실패'; });
+    .catch(e => {
+      console.error(e);
+      const denied = e && (e.code === 'permission-denied' || /permission/i.test(e.message || ''));
+      $('savedState').textContent = denied ? '· 랭킹 저장 거부됨' : '· 저장 실패';
+      $('savedState').title = denied ? 'Firestore 규칙이 최신인지 확인해 주세요.' : String(e && e.message || e);
+    });
 }
 // 컴퓨터 대결 시작 기록(세션). 끝날 때 이 세션을 지우면서 점수를 올려야 규칙을 통과함
 function startSession(level) {
@@ -374,9 +406,9 @@ function startSession(level) {
 }
 function recordSolo(win) {
   if (!db || !uid || !S.session) return false;
-  const b = myBody(); const x = Object.assign({ best: 0, w: 0, l: 0 }, b[S.level] || {});
+  const b = myBody(); const x = Object.assign({ best: 0, sum: 0, w: 0, l: 0 }, b[S.level] || {});
   const sc = Math.min(S.score, CAP[S.level]);
-  const best = sc > x.best; if (best) x.best = sc; win ? x.w++ : x.l++; b[S.level] = x;
+  const best = sc > x.best; if (best) x.best = sc; x.sum += sc; win ? x.w++ : x.l++; b[S.level] = x;
   finish(b);
   const sess = S.session; S.session = null;
   queue(async () => {
@@ -451,7 +483,7 @@ async function joinRoom(code) {
       const r = s.data();
       if (r.host === uid || r.guest === uid) return;
       if (r.guest) throw new Error('이미 두 명이 들어간 방이에요.');
-      t.update(ref, { guest: uid, guestNick: myNick() || '참가자', status: 'playing', words: [{ w: startWord(), by: 'sys' }], turn: r.host, turnStart: Date.now(), pending: null, acc: { [r.host]: MAX_ACCEPT, [uid]: MAX_ACCEPT } });
+      t.update(ref, { guest: uid, guestNick: myNick() || '참가자', status: 'playing', words: [{ w: startWord(), by: 'sys' }], turn: r.host, turnStart: Date.now(), pending: null, acc: {} });
     });
     openRoom(code);
   } catch (e) { noteBox($('lobbyNote'), 'err', esc(e.message || '참가하지 못했어요.')); }
@@ -486,7 +518,7 @@ function renderRoom(r) {
   const ol = $('pChain'); ol.innerHTML = '';
   r.words.forEach(x => {
     if (x.by === 'sys') { const li = chainItem(x.w, '시작 단어'); ol.appendChild(li); }
-    else ol.appendChild(chainItem(x.w, nameOf(r, x.by), { me: x.by === uid, accepted: x.acc }));
+    else ol.appendChild(chainItem(x.w, nameOf(r, x.by), { me: x.by === uid }));
   });
   const last = endOf(r.words[r.words.length - 1].w);
   const myTurn = r.status === 'playing' && r.turn === uid;
@@ -498,14 +530,7 @@ function renderRoom(r) {
   $('pGiveup').classList.toggle('hidden', r.status !== 'playing');
   $('pRematch').classList.toggle('hidden', r.status !== 'done');
 
-  // 인정 요청
-  if (r.status === 'playing' && r.pending) {
-    if (r.pending.by === uid) noteBox($('pNote'), '', `“<b>${esc(r.pending.w)}</b>” 인정 요청을 보냈어요. ${esc(nameOf(r, opp))}의 답을 기다리는 중…`);
-    else noteBox($('pNote'), '', `${esc(nameOf(r, r.pending.by))}이(가) 사전에 없는 단어 “<b>${esc(r.pending.w)}</b>”을(를) 인정해 달래요.`,
-      [['인정', () => answerPending(true), true], ['거절', () => answerPending(false)]]);
-  } else if (prev && prev.pending && !r.pending && prev.pending.by === uid && r.turn === uid && r.status === 'playing') {
-    noteBox($('pNote'), 'err', `“${esc(prev.pending.w)}”은(는) 거절됐어요. 다른 단어를 내 주세요.`);
-  } else if (!prev || prev.words.length !== r.words.length || prev.status !== r.status) noteBox($('pNote'));
+  if (!prev || prev.words.length !== r.words.length || prev.status !== r.status) noteBox($('pNote'));
 
   status(r.words.length, `1:1 · ${nameOf(r, uid)}`);
   if (r.status === 'done') {
@@ -541,11 +566,6 @@ async function pvpSubmit() {
   const used = new Set(r.words.map(x => x.w));
   const last = endOf(r.words[r.words.length - 1].w);
   const c = check(w, last, used);
-  if (c === 'unknown') {
-    if ((r.acc || {})[uid] <= 0) return noteBox($('pNote'), 'err', `“${esc(w)}”은(는) 사전에 없어요. 이번 판 인정 기회를 모두 썼어요.`);
-    return noteBox($('pNote'), '', `“<b>${esc(w)}</b>”은(는) 사전에 없어요. 상대에게 인정을 요청할까요? <span class="muted">(남은 요청 ${(r.acc || {})[uid]}회)</span>`,
-      [['인정 요청', () => requestAccept(w), true], ['다시 입력', () => { noteBox($('pNote')); $('pInp').select(); }]]);
-  }
   if (c) { noteBox($('pNote'), 'err', esc(c)); $('pInp').select(); return; }
   $('pInp').disabled = true;
   try {
@@ -557,28 +577,6 @@ async function pvpSubmit() {
     });
     $('pInp').value = ''; noteBox($('pNote'));
   } catch (e) { noteBox($('pNote'), 'err', esc(e.message || '보내지 못했어요.')); $('pInp').disabled = false; }
-}
-async function requestAccept(w) {
-  try {
-    await F.runTransaction(db, async t => {
-      const s = await t.get(roomRef); const x = s.data();
-      if (x.status !== 'playing' || x.turn !== uid || x.pending) throw new Error('지금은 요청할 수 없어요.');
-      if (!((x.acc || {})[uid] > 0)) throw new Error('인정 기회를 모두 썼어요.');
-      t.update(roomRef, { pending: { w, by: uid } });
-    });
-  } catch (e) { noteBox($('pNote'), 'err', esc(e.message)); }
-}
-async function answerPending(ok) {
-  try {
-    await F.runTransaction(db, async t => {
-      const s = await t.get(roomRef); const x = s.data();
-      if (x.status !== 'playing' || !x.pending || x.pending.by === uid) return;
-      const by = x.pending.by;
-      if (!ok) { t.update(roomRef, { pending: null }); return; }
-      const acc = Object.assign({}, x.acc); acc[by] = (acc[by] || 0) - 1;
-      t.update(roomRef, { words: [...x.words, { w: x.pending.w, by, acc: true }], turn: uid, turnStart: Date.now(), pending: null, acc });
-    });
-  } catch (e) { console.error(e); }
 }
 async function pvpGiveup() {
   if (!room || room.status !== 'playing') return;
@@ -595,14 +593,14 @@ async function rematch() {
     await F.runTransaction(db, async t => {
       const s = await t.get(roomRef); const x = s.data(); if (x.status !== 'done') return;
       const loser = x.winner === x.host ? x.guest : x.host;
-      t.update(roomRef, { status: 'playing', round: (x.round || 1) + 1, words: [{ w: startWord(), by: 'sys' }], turn: loser, turnStart: Date.now(), pending: null, winner: null, reason: '', acc: { [x.host]: MAX_ACCEPT, [x.guest]: MAX_ACCEPT } });
+      t.update(roomRef, { status: 'playing', round: (x.round || 1) + 1, words: [{ w: startWord(), by: 'sys' }], turn: loser, turnStart: Date.now(), pending: null, winner: null, reason: '', acc: {} });
     });
   } catch (e) { console.error(e); }
 }
 
-$('mkRoom').onclick = makeRoom;
-$('joinBtn').onclick = () => joinRoom($('joinCode').value);
-$('joinCode').addEventListener('keydown', e => { if (e.key === 'Enter') joinRoom($('joinCode').value); });
+$('mkRoom').onclick = () => needNick(makeRoom);
+$('joinBtn').onclick = () => needNick(() => joinRoom($('joinCode').value));
+$('joinCode').addEventListener('keydown', e => { if (e.key === 'Enter') needNick(() => joinRoom($('joinCode').value)); });
 $('pInp').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); pvpSubmit(); } });
 $('pGiveup').onclick = pvpGiveup;
 $('pRematch').onclick = rematch;

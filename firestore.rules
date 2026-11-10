@@ -6,20 +6,23 @@ service cloud.firestore {
     function me() { return request.auth.uid; }
 
     /* ---------------- 랭킹 ---------------- */
-    function zero() { return {'best': 0, 'w': 0, 'l': 0}; }
+    function zero() { return {'best': 0, 'sum': 0, 'w': 0, 'l': 0}; }
+    function sumOf(m) { return m.get('sum', 0); }
     function lvOf(d, k) { return d.get(k, zero()); }
     function pvpOf(d) { return d.get('pvp', {'w': 0, 'l': 0}); }
     function games(m) { return m.w + m.l; }
     function soloGames(d) { return games(lvOf(d, 'easy')) + games(lvOf(d, 'mid')) + games(lvOf(d, 'hard')); }
     function okLv(m, cap) {
-      return m.keys().hasOnly(['best', 'w', 'l'])
+      return m.keys().hasOnly(['best', 'sum', 'w', 'l'])
         && m.best is int && m.best >= 0 && m.best <= cap
+        && sumOf(m) is int && sumOf(m) >= 0 && sumOf(m) <= 100000000
         && m.w is int && m.w >= 0 && m.l is int && m.l >= 0;
     }
     function notLess(n, o, k) {
-      return lvOf(n, k).best >= lvOf(o, k).best && lvOf(n, k).w >= lvOf(o, k).w && lvOf(n, k).l >= lvOf(o, k).l;
+      return lvOf(n, k).best >= lvOf(o, k).best && sumOf(lvOf(n, k)) >= sumOf(lvOf(o, k)) && lvOf(n, k).w >= lvOf(o, k).w && lvOf(n, k).l >= lvOf(o, k).l;
     }
-    function sameBest(n, o, k) { return lvOf(n, k).best == lvOf(o, k).best; }
+    // 최고 점수와 누적 점수가 그대로인지
+    function sameBest(n, o, k) { return lvOf(n, k).best == lvOf(o, k).best && sumOf(lvOf(n, k)) == sumOf(lvOf(o, k)); }
     function sameBests(n, o) { return sameBest(n, o, 'easy') && sameBest(n, o, 'mid') && sameBest(n, o, 'hard'); }
     function samePvp(n, o) { return pvpOf(n).w == pvpOf(o).w && pvpOf(n).l == pvpOf(o).l; }
 
@@ -29,7 +32,7 @@ service cloud.firestore {
         && n.nick is string && n.nick.size() <= 12
         && okLv(lvOf(n, 'easy'), 1500) && okLv(lvOf(n, 'mid'), 3000) && okLv(lvOf(n, 'hard'), 4500)
         && pvpOf(n).keys().hasOnly(['w', 'l']) && pvpOf(n).w is int && pvpOf(n).l is int
-        && n.total == lvOf(n, 'easy').best + lvOf(n, 'mid').best + lvOf(n, 'hard').best
+        && n.total == sumOf(lvOf(n, 'easy')) + sumOf(lvOf(n, 'mid')) + sumOf(lvOf(n, 'hard'))
         && n.updatedAt == request.time
         && notLess(n, o, 'easy') && notLess(n, o, 'mid') && notLess(n, o, 'hard')
         && pvpOf(n).w >= pvpOf(o).w && pvpOf(n).l >= pvpOf(o).l;
@@ -42,7 +45,7 @@ service cloud.firestore {
     }
 
     // 2) 컴퓨터 대결 한 판: 시작할 때 만든 세션을 이번 쓰기에서 지워야 하고,
-    //    점수는 걸린 시간에 비례한 상한을 넘을 수 없음 (단어 1개당 최소 1.5초)
+    //    이번 판 점수(누적 증가분)는 걸린 시간에 비례한 상한을 넘을 수 없음 (단어 1개당 최소 1.5초)
     function sessionPath() { return /databases/$(database)/documents/sessions/$(me()); }
     function capOk(best, L, secs) {
       return (L == 'easy' && best * 3 <= 90  + 20 * secs)
@@ -53,13 +56,17 @@ service cloud.firestore {
       let s = get(sessionPath()).data;
       let L = s.level;
       let secs = (request.time - s.startedAt).seconds();
+      let g = sumOf(lvOf(n, L)) - sumOf(lvOf(o, L));
+      let ob = lvOf(o, L).best;
       return exists(sessionPath()) && !existsAfter(sessionPath())
         && soloGames(n) == soloGames(o) + 1
         && games(lvOf(n, L)) == games(lvOf(o, L)) + 1
         && (L == 'easy' || sameBest(n, o, 'easy'))
         && (L == 'mid'  || sameBest(n, o, 'mid'))
         && (L == 'hard' || sameBest(n, o, 'hard'))
-        && (sameBest(n, o, L) || capOk(lvOf(n, L).best, L, secs))
+        && g >= 0 && capOk(g, L, secs)
+        && ((L == 'easy' && g <= 1500) || (L == 'mid' && g <= 3000) || (L == 'hard' && g <= 4500))
+        && lvOf(n, L).best == (g > ob ? g : ob)
         && samePvp(n, o);
     }
 

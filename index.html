@@ -194,7 +194,7 @@ tr.mine td{background:var(--brand-soft)}
 <!-- 1:1 -->
 <section id="v-pvp" class="hidden">
   <h1>1:1 대결</h1>
-  <p class="meta">친구와 번갈아 단어를 냅니다. 제한 시간 20초, 사전에 없는 단어는 상대가 인정해 주면 통과.</p>
+  <p class="meta">친구와 번갈아 단어를 냅니다. 한 차례 제한 시간 20초.</p>
 
   <div id="pvpOff" class="hidden">
     <div class="note">온라인 기능이 아직 설정되지 않았어요. 함께 받은 <b>README.md</b>대로 Firebase 설정값을 <code>firebase-config.js</code>에 넣으면 켜집니다.</div>
@@ -258,13 +258,13 @@ tr.mine td{background:var(--brand-soft)}
   <h2>2. 두음법칙</h2>
   <p>끝 글자의 두음법칙 형태로 시작해도 됩니다. 예: 력 → 역, 녀 → 여, 락 → 낙.</p>
   <h2>3. 사전</h2>
-  <p>국어사전 표제어 약 33만 개로 확인합니다. ‘-다’로 끝나는 동사·형용사는 쓸 수 없습니다. 단어를 누르면 표준국어대사전 검색으로 연결됩니다.</p>
-  <h2>4. 고유명사</h2>
-  <p>사전에 없는 사람 이름·브랜드·지명(예: 마동석)도 낼 수 있습니다. 컴퓨터 대결에서는 <b>인정</b> 버튼으로 한 판 3회까지(0점), 1:1 대결에서는 상대가 인정해야 통과되며 한 판 3회까지입니다.</p>
+  <p>표준국어대사전의 명사 약 32만 개로 확인합니다. 몬스터·스마트폰 같은 외래어도 사전에 실려 있으면 쓸 수 있고, 방언·옛말·북한어와 사전에 없는 말은 쓸 수 없습니다. 단어를 누르면 표준국어대사전 검색으로 연결됩니다.</p>
+  <h2>4. 닉네임</h2>
+  <p>게임을 시작하려면 닉네임이 필요합니다. 오른쪽 위 <b>작성자</b> 칸에서 언제든 바꿀 수 있으며, 랭킹에 이 이름으로 표시됩니다.</p>
   <h2>5. 승패</h2>
   <p>컴퓨터가 단어를 못 찾으면 승리, 제한 시간 초과나 포기는 패배입니다. 1:1 대결도 같습니다.</p>
   <h2>6. 점수</h2>
-  <p>내 단어 1개당 하수 10 · 중수 20 · 고수 30점, 승리 보너스 하수 30 · 중수 100 · 고수 250점. 랭킹 종합 점수는 난이도별 최고 점수의 합입니다. 1:1은 승수로 순위를 매깁니다.</p>
+  <p>내 단어 1개당 하수 10 · 중수 20 · 고수 30점, 승리 보너스 하수 30 · 중수 100 · 고수 250점. 랭킹은 게임할 때마다 점수가 쌓이는 <b>누적 점수</b>로 매기며, 한 판 최고 점수도 함께 보여 줍니다. 1:1은 승수로 순위를 매깁니다.</p>
 </section>
 
 </article>
@@ -275,6 +275,19 @@ tr.mine td{background:var(--brand-soft)}
   <span id="sMode">대기</span>
   <div class="right"><span id="sTimer"></span><span id="sNet">오프라인</span><span>한국어</span></div>
 </footer>
+
+<div class="dlg-bg hidden" id="nickDlg">
+  <div class="dlg" role="dialog" aria-modal="true" aria-labelledby="nickTitle">
+    <h3 id="nickTitle">닉네임을 입력하세요</h3>
+    <p>랭킹과 1:1 대결에 이 이름으로 표시됩니다. (최대 12자)</p>
+    <div class="field" style="margin-top:12px"><input id="nickDlgInp" maxlength="12" placeholder="예: 성환" style="flex:1" aria-label="닉네임"></div>
+    <p class="small" id="nickDlgErr" style="color:var(--red)"></p>
+    <div class="acts">
+      <button class="btn" id="nickDlgCancel">취소</button>
+      <button class="btn primary" id="nickDlgOk">시작</button>
+    </div>
+  </div>
+</div>
 
 <div class="dlg-bg hidden" id="dlg">
   <div class="dlg" role="dialog" aria-modal="true" aria-labelledby="dlgTitle">
