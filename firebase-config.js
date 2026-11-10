@@ -8,5 +8,5 @@ export const firebaseConfig = {
   appId: "1:250409767734:web:efe4bd29154d4a4820d997"
 };
 
-// App Check(reCAPTCHA v3) 사이트 키. 비워 두면 App Check 없이 동작합니다.
+// App Check(Fraud Defense = reCAPTCHA Enterprise) 사이트 키. 비워 두면 App Check 없이 동작합니다.
 export const appCheckSiteKey = "6LfbARkuAAAAAHCTO6Xqxv7qkeMBUrKVC14m4AB5";

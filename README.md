@@ -43,8 +43,8 @@
 
 ### App Check (선택)
 
-1. https://www.google.com/recaptcha/admin/create 에서 **reCAPTCHA v3(점수 기반)** 키를 만들고 도메인에 `sunghwann.github.io`를 넣습니다.
-2. Firebase 콘솔 → **App Check** → 웹 앱에 **reCAPTCHA** 제공자를 등록하고 **비밀 키**를 넣습니다.
+1. reCAPTCHA 키를 만들고 도메인에 `sunghwann.github.io`를 넣습니다.
+2. Firebase 콘솔 → **App Check** → 웹 앱에 **Fraud Defense(reCAPTCHA Enterprise)** 제공자를 등록하고 **사이트 키**를 넣습니다.
 3. **사이트 키**를 `firebase-config.js`의 `appCheckSiteKey`에 넣고 커밋합니다.
 4. App Check 화면에서 요청이 '확인됨'으로 들어오는 것을 확인한 뒤, **Cloud Firestore**와 **Authentication**에 **적용(Enforce)**을 켭니다.
 

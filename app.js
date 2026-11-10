@@ -282,7 +282,7 @@ async function initFirebase() {
     // App Check: 이 사이트에서 온 요청만 받도록 (사이트 키가 있을 때만)
     if (appCheckSiteKey) {
       const ac = await import(base + 'firebase-app-check.js');
-      ac.initializeAppCheck(a, { provider: new ac.ReCaptchaV3Provider(appCheckSiteKey), isTokenAutoRefreshEnabled: true });
+      ac.initializeAppCheck(a, { provider: new ac.ReCaptchaEnterpriseProvider(appCheckSiteKey), isTokenAutoRefreshEnabled: true });
     }
     db = fs.getFirestore(a);
     const au = auth.getAuth(a);
