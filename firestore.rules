@@ -1,9 +1,11 @@
 rules_version = '2';
-// 버전: 2026-11-10 v5 (단순화)
+// 버전: 2026-11-10 v6 (차단 목록)
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    function signedIn() { return request.auth != null; }
+    // 차단 목록: Firebase 콘솔에서 bans/{uid} 문서를 만들면 그 사람은 기록·방을 쓸 수 없음
+    function notBanned() { return !exists(/databases/$(database)/documents/bans/$(request.auth.uid)); }
+    function signedIn() { return request.auth != null && notBanned(); }
     function me() { return request.auth.uid; }
 
     /* ---------------- 랭킹 ----------------
@@ -75,6 +77,11 @@ service cloud.firestore {
 
     function okWrite(n, o) {
       return shapeOk(n) && (nickOnly(n, o) || soloGame(n, o) || pvpResult(n, o));
+    }
+
+    match /bans/{uid} {
+      allow read: if true;
+      allow write: if false;
     }
 
     match /scores/{uid} {
