@@ -1,7 +1,7 @@
-import { firebaseConfig, appCheckSiteKey } from './firebase-config.js?v=202611100956';
+import { firebaseConfig, appCheckSiteKey } from './firebase-config.js?v=202611110112';
 
 // 배포할 때마다 바꾸는 버전. version.json과 같아야 함
-const APP_VERSION = '202611100956';
+const APP_VERSION = '202611110112';
 
 const $ = id => document.getElementById(id);
 const FB_VER = '10.14.1';
@@ -120,12 +120,13 @@ async function showMeaning(w, anchor) {
   const me = pop, d = await defOf(w);
   if (pop !== me) return;
   const tags = [EXTRA.has(w) ? '방언·옛말·북한어' : '', VERBS.has(w) ? '동사·형용사' : ''].filter(Boolean).join(' · ');
-  const body = !d ? '이 사전에는 뜻풀이가 없어요.' : typeof d === 'string' ? esc(d) : d.map((x, i) => `${'①②③④'[i] || '·'} ${esc(x)}`).join('<br>');
+  const body = !d ? (VERBS.has(w) ? '동사·형용사는 뜻풀이가 아직 준비되지 않았어요.' : '이 단어는 뜻풀이가 준비되지 않았어요.') : typeof d === 'string' ? esc(d) : d.map((x, i) => `${'①②③④'[i] || '·'} ${esc(x)}`).join('<br>');
   me.querySelector('.defpop-b').className = 'defpop-b';
   me.querySelector('.defpop-b').innerHTML = (tags ? `<span class="tag" style="margin:0 0 6px;display:inline-block">${tags}</span><br>` : '') + body;
 }
 document.addEventListener('click', e => { if (pop && !pop.contains(e.target) && !e.target.closest('.w')) closePop(); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closePop(); });
+document.querySelector('.canvas').addEventListener('scroll', closePop, { passive: true });
 function wordEl(w, html) {
   const el = document.createElement(IS_MOBILE ? 'span' : 'button');
   el.className = 'w'; el.innerHTML = html;
@@ -690,14 +691,15 @@ function renderRoom(r) {
   if (r.status === 'done') {
     const key = r.code + ':' + r.round;
     const win = r.winner === uid;
-    if (!recorded[key]) { recorded[key] = 1; store.set('kk-pvp-rec', recorded); recordPvp(win, r.code, r.round || 1); }
+    const counted = r.words.length >= 6; // 서버 규칙: 단어가 6개 이상 오간 판만 전적에 반영
+    if (!recorded[key]) { recorded[key] = 1; store.set('kk-pvp-rec', recorded); if (counted) recordPvp(win, r.code, r.round || 1); }
     if (shownRound !== key) {
       shownRound = key;
       const loserName = nameOf(r, r.winner === r.host ? r.guest : r.host);
       const why = r.reason === 'timeout' ? `${loserName}의 시간 초과` : r.reason === 'away' ? `${loserName}이(가) 차례 중에 다른 창으로 나가 반칙패` : `${loserName}의 포기`;
       status(null, null, '');
       const lastW = r.words[r.words.length - 1].w;
-      dialog(win ? '승리했습니다' : '패배했습니다', why, `단어 ${r.words.length}개 이어짐`, '다시 하기', rematch,
+      dialog(win ? '승리했습니다' : '패배했습니다', why, `단어 ${r.words.length}개 이어짐` + (counted ? '' : ' · 단어 6개 미만으로 끝난 판은 랭킹에 반영되지 않아요'), '다시 하기', rematch,
         win ? '' : tipHtml(endOf(lastW), new Set(r.words.map(y => y.w)), lastW));
     }
   }
